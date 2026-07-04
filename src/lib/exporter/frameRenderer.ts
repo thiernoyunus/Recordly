@@ -2504,8 +2504,13 @@ export class FrameRenderer {
 				: "videoHeight" in webcamFrameSource
 					? webcamFrameSource.videoHeight
 					: webcamFrameSource.height) || sourceWidth;
+		// Hide the floating webcam only when the ACTIVE frame's layout is screen-only
+		// (screen band present, no camera band). Keyed off layoutCache, which holds
+		// the time-resolved layout — not config.layout, the project base — so a
+		// screen segment on a default project (or vice versa) matches the preview.
 		const cameraRect = this.layoutCache?.cameraRect ?? null;
-		if (this.config.layout?.mode && this.config.layout.mode !== "default" && !cameraRect) {
+		const screenRect = this.layoutCache?.screenRect ?? null;
+		if (screenRect && !cameraRect) {
 			return;
 		}
 		const margin = webcam.margin ?? 24;
