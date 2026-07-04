@@ -9,21 +9,25 @@ interface UseTimelineSelectionParams {
 	clipRegions: TimelineRegion[];
 	annotationRegions: (TimelineRegion & { zIndex: number })[];
 	audioRegions: TimelineRegion[];
+	layoutRegions?: TimelineRegion[];
 	selectedZoomId: string | null;
 	selectedClipId?: string | null;
 	selectedAnnotationId?: string | null;
 	selectedAudioId?: string | null;
 	selectedCaptionId?: string | null;
+	selectedLayoutId?: string | null;
 	onZoomDelete: (id: string) => void;
 	onClipDelete?: (id: string) => void;
 	onAnnotationDelete?: (id: string) => void;
 	onAudioDelete?: (id: string) => void;
 	onCaptionDelete?: (id: string) => void;
+	onLayoutDelete?: (id: string) => void;
 	onSelectZoom: (id: string | null) => void;
 	onSelectClip?: (id: string | null) => void;
 	onSelectAnnotation?: (id: string | null) => void;
 	onSelectAudio?: (id: string | null) => void;
 	onSelectCaption?: (id: string | null) => void;
+	onSelectLayout?: (id: string | null) => void;
 }
 
 export function useTimelineSelection({
@@ -36,16 +40,19 @@ export function useTimelineSelection({
 	selectedAnnotationId,
 	selectedAudioId,
 	selectedCaptionId,
+	selectedLayoutId,
 	onZoomDelete,
 	onClipDelete,
 	onAnnotationDelete,
 	onAudioDelete,
 	onCaptionDelete,
+	onLayoutDelete,
 	onSelectZoom,
 	onSelectClip,
 	onSelectAnnotation,
 	onSelectAudio,
 	onSelectCaption,
+	onSelectLayout,
 }: UseTimelineSelectionParams) {
 	const [keyframes, setKeyframes] = useState<{ id: string; time: number }[]>([]);
 	const [selectedKeyframeId, setSelectedKeyframeId] = useState<string | null>(null);
@@ -90,6 +97,7 @@ export function useTimelineSelection({
 		onSelectAnnotation?.(null);
 		onSelectAudio?.(null);
 		onSelectCaption?.(null);
+		onSelectLayout?.(null);
 		setSelectAllBlocksActive(false);
 	}, [
 		selectAllBlocksActive,
@@ -101,6 +109,7 @@ export function useTimelineSelection({
 		onSelectAnnotation,
 		onSelectAudio,
 		onSelectCaption,
+		onSelectLayout,
 	]);
 
 	const deleteSelectedClip = useCallback(() => {
@@ -127,14 +136,28 @@ export function useTimelineSelection({
 		onSelectCaption?.(null);
 	}, [selectedCaptionId, onCaptionDelete, onSelectCaption]);
 
+	const deleteSelectedLayout = useCallback(() => {
+		if (!selectedLayoutId || !onLayoutDelete) return;
+		onLayoutDelete(selectedLayoutId);
+		onSelectLayout?.(null);
+	}, [selectedLayoutId, onLayoutDelete, onSelectLayout]);
+
 	const clearSelectedBlocks = useCallback(() => {
 		onSelectZoom(null);
 		onSelectClip?.(null);
 		onSelectAnnotation?.(null);
 		onSelectAudio?.(null);
 		onSelectCaption?.(null);
+		onSelectLayout?.(null);
 		setSelectAllBlocksActive(false);
-	}, [onSelectZoom, onSelectClip, onSelectAnnotation, onSelectAudio, onSelectCaption]);
+	}, [
+		onSelectZoom,
+		onSelectClip,
+		onSelectAnnotation,
+		onSelectAudio,
+		onSelectCaption,
+		onSelectLayout,
+	]);
 
 	const activateSelectAllZooms = useCallback(() => {
 		onSelectZoom(null);
@@ -142,9 +165,17 @@ export function useTimelineSelection({
 		onSelectAnnotation?.(null);
 		onSelectAudio?.(null);
 		onSelectCaption?.(null);
+		onSelectLayout?.(null);
 		setSelectedKeyframeId(null);
 		setSelectAllBlocksActive(true);
-	}, [onSelectZoom, onSelectClip, onSelectAnnotation, onSelectAudio, onSelectCaption]);
+	}, [
+		onSelectZoom,
+		onSelectClip,
+		onSelectAnnotation,
+		onSelectAudio,
+		onSelectCaption,
+		onSelectLayout,
+	]);
 
 	const handleSelectZoom = useCallback(
 		(id: string | null) => {
@@ -184,6 +215,14 @@ export function useTimelineSelection({
 			onSelectCaption?.(id);
 		},
 		[onSelectCaption],
+	);
+
+	const handleSelectLayout = useCallback(
+		(id: string | null) => {
+			setSelectAllBlocksActive(false);
+			onSelectLayout?.(id);
+		},
+		[onSelectLayout],
 	);
 
 	const cycleAnnotationsAtCurrentTime = useCallback(
@@ -226,12 +265,14 @@ export function useTimelineSelection({
 		deleteSelectedAnnotation,
 		deleteSelectedAudio,
 		deleteSelectedCaption,
+		deleteSelectedLayout,
 		clearSelectedBlocks,
 		handleSelectZoom,
 		handleSelectClip,
 		handleSelectAnnotation,
 		handleSelectAudio,
 		handleSelectCaption,
+		handleSelectLayout,
 		cycleAnnotationsAtCurrentTime,
 	};
 }

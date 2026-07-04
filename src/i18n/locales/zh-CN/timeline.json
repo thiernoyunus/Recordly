@@ -35,6 +35,10 @@
 	"audio": {
 		"label": "音频"
 	},
+	"layout": {
+		"label": "Layout",
+		"addLayout": "Add Layout Region"
+	},
 	"addSpeed": "添加变速 (S)",
 	"resizeLeft": "向左调整",
 	"resizeRight": "向右调整"

@@ -35,6 +35,10 @@
 	"audio": {
 		"label": "Аудио"
 	},
+	"layout": {
+		"label": "Layout",
+		"addLayout": "Add Layout Region"
+	},
 	"addSpeed": "Скорость (S)",
 	"resizeLeft": "Изменить размер слева",
 	"resizeRight": "Изменить размер справа"

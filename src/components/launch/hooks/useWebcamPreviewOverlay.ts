@@ -218,17 +218,21 @@ export function useWebcamPreviewOverlay({
 			}
 
 			try {
+				// Match the recorder's resolution (useScreenRecorder WEBCAM_WIDTH/HEIGHT).
+				// Chromium shares one capture per camera; a square 320x320 request here
+				// alongside the recorder's 16:9 request forces a rescale that corrupts
+				// recordings on some devices (striped frames, odd square resolutions).
 				const previewStream = await navigator.mediaDevices.getUserMedia({
 					video: webcamDeviceId
 						? {
 								deviceId: { exact: webcamDeviceId },
-								width: { ideal: 320 },
-								height: { ideal: 320 },
+								width: { ideal: 1920 },
+								height: { ideal: 1080 },
 								frameRate: { ideal: 24, max: 30 },
 						  }
 						: {
-								width: { ideal: 320 },
-								height: { ideal: 320 },
+								width: { ideal: 1920 },
+								height: { ideal: 1080 },
 								frameRate: { ideal: 24, max: 30 },
 						  },
 					audio: false,

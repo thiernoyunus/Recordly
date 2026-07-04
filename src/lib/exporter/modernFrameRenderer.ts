@@ -19,14 +19,21 @@ import type {
 	CursorClickEffectStyle,
 	CursorStyle,
 	CursorTelemetryPoint,
+	LayoutRegion,
 	Padding,
+	SceneLayoutSettings,
 	SpeedRegion,
 	WebcamOverlaySettings,
 	ZoomMotionBlurTuning,
 	ZoomRegion,
 	ZoomTransitionEasing,
 } from "@/components/video-editor/types";
-import { getDefaultCaptionFontFamily, ZOOM_DEPTH_SCALES } from "@/components/video-editor/types";
+import {
+	DEFAULT_SCENE_LAYOUT,
+	getDefaultCaptionFontFamily,
+	getLayoutAtTime,
+	ZOOM_DEPTH_SCALES,
+} from "@/components/video-editor/types";
 import { DEFAULT_FOCUS } from "@/components/video-editor/videoPlayback/constants";
 import {
 	type CursorFollowCameraState,
@@ -41,6 +48,10 @@ import {
 } from "@/components/video-editor/videoPlayback/cursorRenderer";
 import {
 	computePaddedLayout,
+	computeSceneBandRects,
+	getSceneLayoutScreenFocus,
+	type LayoutRect,
+	resolveSceneLayout,
 	scalePreviewBorderRadius,
 } from "@/components/video-editor/videoPlayback/layoutUtils";
 import {
@@ -130,6 +141,8 @@ interface FrameRenderConfig {
 	cropRegion: CropRegion;
 	webcam?: WebcamOverlaySettings;
 	webcamUrl?: string | null;
+	layout?: SceneLayoutSettings;
+	layoutRegions?: LayoutRegion[];
 	videoWidth: number;
 	videoHeight: number;
 	annotationRegions?: AnnotationRegion[];
@@ -186,6 +199,8 @@ interface LayoutCache {
 		height: number;
 		sourceCrop: CropRegion;
 	};
+	screenRect: LayoutRect | null;
+	cameraRect: LayoutRect | null;
 }
 
 interface MutableVideoTextureSource {
@@ -2915,6 +2930,13 @@ export class FrameRenderer {
 			return;
 		}
 
+		const cameraRect = this.layoutCache?.cameraRect ?? null;
+		if (this.config.layout?.mode && this.config.layout.mode !== "default" && !cameraRect) {
+			this.webcamRootContainer.visible = false;
+			this.webcamLayoutCache = null;
+			return;
+		}
+
 		const margin = webcam.margin ?? 24;
 		const widthPercent = webcam.width ?? webcam.size ?? 50;
 		const aspectSourceWidth =
@@ -2932,28 +2954,32 @@ export class FrameRenderer {
 			aspectSourceHeight,
 			webcam.cropRegion,
 		);
-		const dimensions = getWebcamOverlayDimensionsPx({
-			containerWidth: this.config.width,
-			containerHeight: this.config.height,
-			widthPercent,
-			heightPercent,
-			margin,
-			zoomScale: this.animationState.appliedScale || 1,
-			reactToZoom: webcam.reactToZoom ?? true,
-		});
-		const position = getWebcamOverlayPosition({
-			containerWidth: this.config.width,
-			containerHeight: this.config.height,
-			width: dimensions.width,
-			height: dimensions.height,
-			margin,
-			positionPreset: webcam.positionPreset ?? webcam.corner,
-			positionX: webcam.positionX ?? 1,
-			positionY: webcam.positionY ?? 1,
-			legacyCorner: webcam.corner,
-		});
-		const radius = Math.max(0, webcam.cornerRadius ?? 18);
-		const shadowStrength = clampUnitInterval(webcam.shadow ?? 0);
+		const dimensions =
+			cameraRect ??
+			getWebcamOverlayDimensionsPx({
+				containerWidth: this.config.width,
+				containerHeight: this.config.height,
+				widthPercent,
+				heightPercent,
+				margin,
+				zoomScale: this.animationState.appliedScale || 1,
+				reactToZoom: webcam.reactToZoom ?? true,
+			});
+		const position = cameraRect
+			? { x: cameraRect.x, y: cameraRect.y }
+			: getWebcamOverlayPosition({
+					containerWidth: this.config.width,
+					containerHeight: this.config.height,
+					width: dimensions.width,
+					height: dimensions.height,
+					margin,
+					positionPreset: webcam.positionPreset ?? webcam.corner,
+					positionX: webcam.positionX ?? 1,
+					positionY: webcam.positionY ?? 1,
+					legacyCorner: webcam.corner,
+				});
+		const radius = cameraRect ? 0 : Math.max(0, webcam.cornerRadius ?? 18);
+		const shadowStrength = cameraRect ? 0 : clampUnitInterval(webcam.shadow ?? 0);
 
 		this.webcamRootContainer.visible = true;
 
@@ -3036,6 +3062,7 @@ export class FrameRenderer {
 			},
 			motionBlurState: this.motionBlurState,
 			frameTimeMs: timeMs,
+			anchor: this.getScreenZoomAnchor(layoutCache),
 		});
 
 		if (includeOverlayLayers) {
@@ -3210,9 +3237,12 @@ export class FrameRenderer {
 			this.videoTextureSource.update();
 		}
 
-		if (!this.layoutCache) {
-			this.updateLayout();
-		}
+		const activeLayout = getLayoutAtTime(
+			this.config.layoutRegions,
+			this.config.layout ?? DEFAULT_SCENE_LAYOUT,
+			this.currentVideoTime * 1000,
+		);
+		this.updateLayout(activeLayout);
 		const layoutCache = this.layoutCache;
 		if (!layoutCache) {
 			throw new Error("Renderer layout cache is unavailable");
@@ -3289,6 +3319,7 @@ export class FrameRenderer {
 			},
 			motionBlurState: this.motionBlurState,
 			frameTimeMs: timeMs,
+			anchor: this.getScreenZoomAnchor(layoutCache),
 		});
 
 		this.updateAnnotationLayer(timeMs);
@@ -3545,7 +3576,7 @@ export class FrameRenderer {
 		}
 	}
 
-	private updateLayout(): void {
+	private updateLayout(activeLayout: SceneLayoutSettings): void {
 		if (!this.app || !this.videoSprite || !this.videoMaskGraphics) return;
 
 		const {
@@ -3557,6 +3588,11 @@ export class FrameRenderer {
 			videoWidth,
 			videoHeight,
 		} = this.config;
+		const resolvedLayout = resolveSceneLayout(
+			activeLayout,
+			Boolean(this.config.webcam?.enabled && this.config.webcamUrl),
+		);
+		const bands = computeSceneBandRects(resolvedLayout, width, height);
 
 		const layout = computePaddedLayout({
 			width,
@@ -3566,10 +3602,15 @@ export class FrameRenderer {
 			cropRegion,
 			videoWidth,
 			videoHeight,
+			contentRect: bands.screenRect ?? undefined,
+			fitMode: bands.screenRect ? "cover" : undefined,
+			contentFocus: bands.screenRect ? getSceneLayoutScreenFocus(resolvedLayout) : undefined,
 		});
 
 		this.videoSprite.scale.set(layout.scale);
 		this.videoSprite.position.set(layout.spriteX, layout.spriteY);
+		this.videoSprite.visible = resolvedLayout.mode === "default" || Boolean(bands.screenRect);
+		this.videoMaskGraphics.visible = this.videoSprite.visible;
 
 		const scaledBorderRadius = scalePreviewBorderRadius(width, height, borderRadius);
 
@@ -3606,9 +3647,23 @@ export class FrameRenderer {
 				height: layout.croppedDisplayHeight,
 				sourceCrop: cropRegion,
 			},
+			screenRect: bands.screenRect,
+			cameraRect: bands.cameraRect,
 		};
 
 		this.updateFrameLayout();
+	}
+
+	private getScreenZoomAnchor(
+		layoutCache = this.layoutCache,
+	): { x: number; y: number } | undefined {
+		const screenRect = layoutCache?.screenRect;
+		return screenRect
+			? {
+					x: screenRect.x + screenRect.width / 2,
+					y: screenRect.y + screenRect.height / 2,
+				}
+			: undefined;
 	}
 
 	private updateFrameLayout(): void {
@@ -3779,6 +3834,7 @@ export class FrameRenderer {
 			zoomProgress: state.progress,
 			focusX: state.focusX,
 			focusY: state.focusY,
+			anchor: this.getScreenZoomAnchor(),
 		});
 
 		// Spring-driven zoom animation for export — use content time, not wall-clock,

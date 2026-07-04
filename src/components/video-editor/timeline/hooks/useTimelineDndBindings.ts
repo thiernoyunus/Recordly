@@ -5,6 +5,7 @@ import type {
 	AudioRegion,
 	CaptionCue,
 	ClipRegion,
+	LayoutRegion,
 	SpeedRegion,
 	TrimRegion,
 	ZoomRegion,
@@ -27,6 +28,7 @@ interface UseTimelineDndBindingsParams {
 	speedRegions: SpeedRegion[];
 	audioRegions: AudioRegion[];
 	captionCues: CaptionCue[];
+	layoutRegions?: LayoutRegion[];
 	onZoomSpanChange: (id: string, span: Span) => void;
 	onTrimSpanChange?: (id: string, span: Span) => void;
 	onClipSpanChange?: (id: string, span: Span) => void;
@@ -34,6 +36,7 @@ interface UseTimelineDndBindingsParams {
 	onSpeedSpanChange?: (id: string, span: Span) => void;
 	onAudioSpanChange?: (id: string, span: Span, trackIndex?: number) => void;
 	onCaptionSpanChange?: (id: string, span: Span) => void;
+	onLayoutSpanChange?: (id: string, span: Span) => void;
 }
 
 type TimelineItemKind =
@@ -44,6 +47,7 @@ type TimelineItemKind =
 	| "speed"
 	| "audio"
 	| "caption"
+	| "layout"
 	| null;
 
 export function useTimelineDndBindings({
@@ -54,6 +58,7 @@ export function useTimelineDndBindings({
 	speedRegions,
 	audioRegions,
 	captionCues,
+	layoutRegions = [],
 	onZoomSpanChange,
 	onTrimSpanChange,
 	onClipSpanChange,
@@ -61,6 +66,7 @@ export function useTimelineDndBindings({
 	onSpeedSpanChange,
 	onAudioSpanChange,
 	onCaptionSpanChange,
+	onLayoutSpanChange,
 }: UseTimelineDndBindingsParams) {
 	const resolveItemKind = useCallback(
 		(id: string): TimelineItemKind => {
@@ -71,6 +77,7 @@ export function useTimelineDndBindings({
 			if (speedRegions.some((r) => r.id === id)) return "speed";
 			if (audioRegions.some((r) => r.id === id)) return "audio";
 			if (captionCues.some((c) => c.id === id)) return "caption";
+			if (layoutRegions.some((r) => r.id === id)) return "layout";
 			return null;
 		},
 		[
@@ -81,6 +88,7 @@ export function useTimelineDndBindings({
 			speedRegions,
 			audioRegions,
 			captionCues,
+			layoutRegions,
 		],
 	);
 
@@ -118,6 +126,8 @@ export function useTimelineDndBindings({
 			// Captions share a single lane and must never overlap, so validate a dragged or
 			// resized caption against the other cues just like the other timeline items.
 			if (itemKind === "caption") return checkOverlap(captionCues);
+			// Layout regions share a single lane like zoom regions and must never overlap.
+			if (itemKind === "layout") return checkOverlap(layoutRegions);
 
 			if (itemKind === "audio") {
 				const activeTrackIndex = resolveTrackIndex("audio", excludeId, rowId);
@@ -137,6 +147,7 @@ export function useTimelineDndBindings({
 			audioRegions,
 			speedRegions,
 			captionCues,
+			layoutRegions,
 		],
 	);
 
@@ -148,8 +159,9 @@ export function useTimelineDndBindings({
 				annotationRegions,
 				audioRegions,
 				captionCues,
+				layoutRegions,
 			}),
-		[zoomRegions, clipRegions, annotationRegions, audioRegions, captionCues],
+		[zoomRegions, clipRegions, annotationRegions, audioRegions, captionCues, layoutRegions],
 	);
 
 	const allRegionSpans = useMemo(
@@ -158,8 +170,9 @@ export function useTimelineDndBindings({
 				zoomRegions,
 				clipRegions,
 				audioRegions,
+				layoutRegions,
 			}),
-		[zoomRegions, clipRegions, audioRegions],
+		[zoomRegions, clipRegions, audioRegions, layoutRegions],
 	);
 
 	const getResolvedDropRowId = useCallback(
@@ -186,6 +199,8 @@ export function useTimelineDndBindings({
 				onAudioSpanChange?.(id, span, nextTrackIndex);
 			} else if (itemKind === "caption") {
 				onCaptionSpanChange?.(id, span);
+			} else if (itemKind === "layout") {
+				onLayoutSpanChange?.(id, span);
 			}
 		},
 		[
@@ -198,6 +213,7 @@ export function useTimelineDndBindings({
 			onSpeedSpanChange,
 			onAudioSpanChange,
 			onCaptionSpanChange,
+			onLayoutSpanChange,
 		],
 	);
 

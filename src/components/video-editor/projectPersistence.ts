@@ -51,6 +51,7 @@ import {
 	DEFAULT_FIGURE_DATA,
 	DEFAULT_PADDING,
 	DEFAULT_PLAYBACK_SPEED,
+	DEFAULT_SCENE_LAYOUT,
 	DEFAULT_WEBCAM_CORNER_RADIUS,
 	DEFAULT_WEBCAM_MARGIN,
 	DEFAULT_WEBCAM_OVERLAY,
@@ -69,9 +70,13 @@ import {
 	DEFAULT_ZOOM_OUT_EASING,
 	DEFAULT_ZOOM_SMOOTHNESS,
 	getDefaultCaptionFontFamily,
+	LayoutRegion,
 	normalizeCursorClickEffectColor,
 	normalizeCursorClickEffectStyle,
 	type Padding,
+	SCENE_LAYOUT_SPLIT_RATIO_MAX,
+	SCENE_LAYOUT_SPLIT_RATIO_MIN,
+	type SceneLayoutSettings,
 	type SpeedRegion,
 	type TrimRegion,
 	type WebcamOverlaySettings,
@@ -131,6 +136,7 @@ export interface ProjectEditorState {
 	frame: string | null;
 	cropRegion: CropRegion;
 	zoomRegions: ZoomRegion[];
+	layoutRegions: LayoutRegion[];
 	trimRegions: TrimRegion[];
 	clipRegions: ClipRegion[];
 	autoFullTrackClipId?: string | null;
@@ -141,6 +147,7 @@ export interface ProjectEditorState {
 	autoCaptions: CaptionCue[];
 	autoCaptionSettings: AutoCaptionSettings;
 	webcam: WebcamOverlaySettings;
+	layout: SceneLayoutSettings;
 	aspectRatio: AspectRatio;
 	sourceAudioTrackSettingsByClip?: Record<string, SourceAudioTrackSettings>;
 	defaultSourceAudioTrackSettings?: SourceAudioTrackSettings;
@@ -479,6 +486,58 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 							region.mode === "auto" || region.mode === "manual"
 								? region.mode
 								: undefined,
+					};
+				})
+		: [];
+
+	const normalizeSceneLayout = (layout: unknown): SceneLayoutSettings => {
+		const rawLayout =
+			layout && typeof layout === "object" ? (layout as Partial<SceneLayoutSettings>) : null;
+		return rawLayout
+			? {
+					mode:
+						rawLayout.mode === "default" ||
+						rawLayout.mode === "split" ||
+						rawLayout.mode === "camera" ||
+						rawLayout.mode === "screen"
+							? rawLayout.mode
+							: DEFAULT_SCENE_LAYOUT.mode,
+					splitRatio: isFiniteNumber(rawLayout.splitRatio)
+						? clamp(
+								rawLayout.splitRatio,
+								SCENE_LAYOUT_SPLIT_RATIO_MIN,
+								SCENE_LAYOUT_SPLIT_RATIO_MAX,
+							)
+						: DEFAULT_SCENE_LAYOUT.splitRatio,
+					cameraOnTop: Boolean(rawLayout.cameraOnTop),
+					...(isFiniteNumber(rawLayout.screenFocusX)
+						? { screenFocusX: clamp(rawLayout.screenFocusX, 0, 1) }
+						: {}),
+					...(isFiniteNumber(rawLayout.screenFocusY)
+						? { screenFocusY: clamp(rawLayout.screenFocusY, 0, 1) }
+						: {}),
+				}
+			: { ...DEFAULT_SCENE_LAYOUT };
+	};
+
+	const normalizedLayoutRegions: LayoutRegion[] = Array.isArray(editor.layoutRegions)
+		? editor.layoutRegions
+				.filter(
+					(region): region is LayoutRegion =>
+						Boolean(region && typeof region.id === "string") &&
+						isFiniteNumber(region.startMs) &&
+						isFiniteNumber(region.endMs) &&
+						region.endMs > region.startMs,
+				)
+				.map((region) => {
+					const startMs = Math.max(0, Math.round(region.startMs));
+					const endMs = Math.max(startMs + 1, Math.round(region.endMs));
+
+					return {
+						id: region.id,
+						startMs,
+						endMs,
+						layout: normalizeSceneLayout(region.layout),
 					};
 				})
 		: [];
@@ -823,6 +882,7 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 
 	const webcam: Partial<WebcamOverlaySettings> =
 		editor.webcam && typeof editor.webcam === "object" ? editor.webcam : {};
+	const normalizedLayout = normalizeSceneLayout(editor.layout);
 	const webcamSourcePath = typeof webcam.sourcePath === "string" ? webcam.sourcePath : null;
 	const legacyZoomScaleEffect = isFiniteNumber(
 		(webcam as Partial<{ zoomScaleEffect: number }>).zoomScaleEffect,
@@ -986,6 +1046,7 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 			height: cropHeight,
 		},
 		zoomRegions: normalizedZoomRegions,
+		layoutRegions: normalizedLayoutRegions,
 		trimRegions: normalizedTrimRegions,
 		clipRegions: normalizedClipRegions,
 		autoFullTrackClipId: normalizedAutoFullTrackClipId,
@@ -1065,6 +1126,7 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 				? clamp(webcam.margin, 0, 96)
 				: DEFAULT_WEBCAM_MARGIN,
 		},
+		layout: normalizedLayout,
 		sourceAudioTrackSettingsByClip:
 			editor.sourceAudioTrackSettingsByClip &&
 			typeof editor.sourceAudioTrackSettingsByClip === "object"

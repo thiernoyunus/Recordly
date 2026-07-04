@@ -35,6 +35,7 @@ interface TransformParams {
 	zoomProgress?: number;
 	focusX: number;
 	focusY: number;
+	anchor?: Point2D;
 	isPlaying: boolean;
 	motionBlurAmount?: number;
 	motionBlurTuning?: ZoomMotionBlurTuning;
@@ -85,6 +86,7 @@ interface ZoomTransformGeometry {
 	zoomProgress?: number;
 	focusX: number;
 	focusY: number;
+	anchor?: Point2D;
 }
 
 function resetMotionEffects(
@@ -405,6 +407,7 @@ export function computeZoomTransform({
 	zoomProgress = 1,
 	focusX,
 	focusY,
+	anchor,
 }: ZoomTransformGeometry): AppliedTransform {
 	if (
 		stageSize.width <= 0 ||
@@ -418,8 +421,8 @@ export function computeZoomTransform({
 	const progress = Math.min(1, Math.max(0, zoomProgress));
 	const focusStagePxX = baseMask.x + focusX * baseMask.width;
 	const focusStagePxY = baseMask.y + focusY * baseMask.height;
-	const stageCenterX = stageSize.width / 2;
-	const stageCenterY = stageSize.height / 2;
+	const stageCenterX = anchor?.x ?? stageSize.width / 2;
+	const stageCenterY = anchor?.y ?? stageSize.height / 2;
 	const scale = 1 + (zoomScale - 1) * progress;
 	const finalX = stageCenterX - focusStagePxX * zoomScale;
 	const finalY = stageCenterY - focusStagePxY * zoomScale;
@@ -469,6 +472,7 @@ export function applyZoomTransform({
 	zoomProgress = 1,
 	focusX,
 	focusY,
+	anchor,
 	isPlaying,
 	motionBlurAmount = 0,
 	motionBlurTuning,
@@ -497,6 +501,7 @@ export function applyZoomTransform({
 			zoomProgress,
 			focusX,
 			focusY,
+			anchor,
 		});
 
 	// Apply position & scale to camera container

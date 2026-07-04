@@ -174,6 +174,28 @@
 	z-index: 10;
 }
 
+.glassTeal {
+	position: relative;
+	border-radius: 8px;
+	background: #164e4a;
+	border: 1px solid #1c6b64;
+	transition:
+		background 0.15s ease,
+		border-color 0.15s ease;
+}
+
+.glassTeal:hover {
+	background: #1a615c;
+	border-color: #22867d;
+}
+
+.glassTeal.selected {
+	background: #1c6b64;
+	border-color: #2dd4bf;
+	box-shadow: inset 0 0 0 1.5px #2dd4bf;
+	z-index: 10;
+}
+
 /* Pill resize handle — visible on hover */
 .zoomEndCap {
 	position: absolute;
@@ -308,6 +330,20 @@
 	box-shadow: inset 0 0 0 1.5px #ec4899;
 }
 
+:global(:root:not(.dark)) .glassTeal {
+	background: linear-gradient(180deg, #ccfbf1 0%, #5eead4 100%);
+	border-color: #2dd4bf;
+}
+:global(:root:not(.dark)) .glassTeal:hover {
+	background: linear-gradient(180deg, #99f6e4 0%, #2dd4bf 100%);
+	border-color: #14b8a6;
+}
+:global(:root:not(.dark)) .glassTeal.selected {
+	background: linear-gradient(180deg, #5eead4 0%, #14b8a6 100%);
+	border-color: #14b8a6;
+	box-shadow: inset 0 0 0 1.5px #14b8a6;
+}
+
 :global(:root:not(.dark)) .zoomEndCap {
 	background: rgba(0, 0, 0, 0.5);
 }
@@ -326,7 +362,8 @@
 .glassPurple:hover .zoomEndCap,
 .glassCyan:hover .zoomEndCap,
 .glassDarkGreen:hover .zoomEndCap,
-.glassCaption:hover .zoomEndCap {
+.glassCaption:hover .zoomEndCap,
+.glassTeal:hover .zoomEndCap {
 	opacity: 1;
 }
 

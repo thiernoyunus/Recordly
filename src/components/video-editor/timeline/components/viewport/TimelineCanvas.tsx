@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import {
 	CAPTION_ROW_ID,
 	CLIP_ROW_ID,
+	LAYOUT_ROW_ID,
 	SOURCE_AUDIO_ROW_ID,
 	ZOOM_ROW_ID,
 } from "../../core/constants";
@@ -60,6 +61,7 @@ interface TimelineCanvasProps {
 	onSelectAnnotation?: (id: string | null) => void;
 	onSelectAudio?: (id: string | null) => void;
 	onSelectCaption?: (id: string | null) => void;
+	onSelectLayout?: (id: string | null) => void;
 	onAddZoomAtMs?: (startMs: number) => void;
 	onAddCaptionAtMs?: (startMs: number) => void;
 	canPlaceCaptionAtMs?: (startMs: number) => boolean;
@@ -71,6 +73,8 @@ interface TimelineCanvasProps {
 	selectedAnnotationId?: string | null;
 	selectedAudioId?: string | null;
 	selectedCaptionId?: string | null;
+	selectedLayoutId?: string | null;
+	showLayoutTrack?: boolean;
 	selectAllBlocksActive?: boolean;
 	onClearBlockSelection?: () => void;
 	keyframes?: { id: string; time: number }[];
@@ -367,11 +371,14 @@ interface TimelineCanvasRowsProps {
 	selectedAnnotationId?: string | null;
 	selectedAudioId?: string | null;
 	selectedCaptionId?: string | null;
+	selectedLayoutId?: string | null;
+	showLayoutTrack?: boolean;
 	onSelectZoom?: (id: string | null) => void;
 	onSelectClip?: (id: string | null) => void;
 	onSelectAnnotation?: (id: string | null) => void;
 	onSelectAudio?: (id: string | null) => void;
 	onSelectCaption?: (id: string | null) => void;
+	onSelectLayout?: (id: string | null) => void;
 	sourceAudioTracks?: SourceAudioTrackWithPeaks[];
 	getSourceAudioTrackSettingsForClip?: (clipId: string | null) => SourceAudioTrackSettings;
 	showSourceAudioTrack?: boolean;
@@ -446,11 +453,14 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 	selectedAnnotationId,
 	selectedAudioId,
 	selectedCaptionId,
+	selectedLayoutId,
+	showLayoutTrack = false,
 	onSelectZoom,
 	onSelectClip,
 	onSelectAnnotation,
 	onSelectAudio,
 	onSelectCaption,
+	onSelectLayout,
 	sourceAudioTracks = [],
 	getSourceAudioTrackSettingsForClip,
 	showSourceAudioTrack = false,
@@ -478,62 +488,69 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 	onCaptionRowClick,
 }: TimelineCanvasRowsProps) {
 	const hiddenIds = useMemo(() => new Set(liveHiddenItemIds ?? []), [liveHiddenItemIds]);
-	const { clipItems, zoomItems, captionItems, annotationRows, audioRows } = useMemo(() => {
-		const nextClipItems: TimelineRenderItem[] = [];
-		const nextZoomItems: TimelineRenderItem[] = [];
-		const nextCaptionItems: TimelineRenderItem[] = [];
-		const annotationBuckets = new Map<number, TimelineRenderItem[]>();
-		const audioBuckets = new Map<number, TimelineRenderItem[]>();
+	const { clipItems, zoomItems, layoutItems, captionItems, annotationRows, audioRows } =
+		useMemo(() => {
+			const nextClipItems: TimelineRenderItem[] = [];
+			const nextZoomItems: TimelineRenderItem[] = [];
+			const nextLayoutItems: TimelineRenderItem[] = [];
+			const nextCaptionItems: TimelineRenderItem[] = [];
+			const annotationBuckets = new Map<number, TimelineRenderItem[]>();
+			const audioBuckets = new Map<number, TimelineRenderItem[]>();
 
-		for (const item of items) {
-			if (item.rowId === CLIP_ROW_ID) {
-				nextClipItems.push(item);
-				continue;
+			for (const item of items) {
+				if (item.rowId === CLIP_ROW_ID) {
+					nextClipItems.push(item);
+					continue;
+				}
+				if (item.rowId === ZOOM_ROW_ID) {
+					nextZoomItems.push(item);
+					continue;
+				}
+				if (item.rowId === LAYOUT_ROW_ID) {
+					nextLayoutItems.push(item);
+					continue;
+				}
+				if (item.rowId === CAPTION_ROW_ID) {
+					nextCaptionItems.push(item);
+					continue;
+				}
+				if (isAnnotationTrackRowId(item.rowId)) {
+					const trackIndex = getAnnotationTrackIndex(item.rowId);
+					const bucket = annotationBuckets.get(trackIndex);
+					if (bucket) bucket.push(item);
+					else annotationBuckets.set(trackIndex, [item]);
+					continue;
+				}
+				if (isAudioTrackRowId(item.rowId)) {
+					const trackIndex = getAudioTrackIndex(item.rowId);
+					const bucket = audioBuckets.get(trackIndex);
+					if (bucket) bucket.push(item);
+					else audioBuckets.set(trackIndex, [item]);
+				}
 			}
-			if (item.rowId === ZOOM_ROW_ID) {
-				nextZoomItems.push(item);
-				continue;
-			}
-			if (item.rowId === CAPTION_ROW_ID) {
-				nextCaptionItems.push(item);
-				continue;
-			}
-			if (isAnnotationTrackRowId(item.rowId)) {
-				const trackIndex = getAnnotationTrackIndex(item.rowId);
-				const bucket = annotationBuckets.get(trackIndex);
-				if (bucket) bucket.push(item);
-				else annotationBuckets.set(trackIndex, [item]);
-				continue;
-			}
-			if (isAudioTrackRowId(item.rowId)) {
-				const trackIndex = getAudioTrackIndex(item.rowId);
-				const bucket = audioBuckets.get(trackIndex);
-				if (bucket) bucket.push(item);
-				else audioBuckets.set(trackIndex, [item]);
-			}
-		}
 
-		const annotationRowsSorted = Array.from(annotationBuckets.entries())
-			.sort(([left], [right]) => left - right)
-			.map(([trackIndex, rowItems]) => ({
-				rowId: getAnnotationTrackRowId(trackIndex),
-				items: rowItems,
-			}));
-		const audioRowsSorted = Array.from(audioBuckets.entries())
-			.sort(([left], [right]) => left - right)
-			.map(([trackIndex, rowItems]) => ({
-				rowId: getAudioTrackRowId(trackIndex),
-				items: rowItems,
-			}));
+			const annotationRowsSorted = Array.from(annotationBuckets.entries())
+				.sort(([left], [right]) => left - right)
+				.map(([trackIndex, rowItems]) => ({
+					rowId: getAnnotationTrackRowId(trackIndex),
+					items: rowItems,
+				}));
+			const audioRowsSorted = Array.from(audioBuckets.entries())
+				.sort(([left], [right]) => left - right)
+				.map(([trackIndex, rowItems]) => ({
+					rowId: getAudioTrackRowId(trackIndex),
+					items: rowItems,
+				}));
 
-		return {
-			clipItems: nextClipItems,
-			zoomItems: nextZoomItems,
-			captionItems: nextCaptionItems,
-			annotationRows: annotationRowsSorted,
-			audioRows: audioRowsSorted,
-		};
-	}, [items]);
+			return {
+				clipItems: nextClipItems,
+				zoomItems: nextZoomItems,
+				layoutItems: nextLayoutItems,
+				captionItems: nextCaptionItems,
+				annotationRows: annotationRowsSorted,
+				audioRows: audioRowsSorted,
+			};
+		}, [items]);
 
 	return (
 		<>
@@ -644,6 +661,24 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 						</Item>
 					))}
 			</Row>
+
+			{(showLayoutTrack || layoutItems.length > 0) && (
+				<Row id={LAYOUT_ROW_ID} isEmpty={layoutItems.length === 0}>
+					{layoutItems.map((item) => (
+						<Item
+							id={item.id}
+							key={item.id}
+							rowId={item.rowId}
+							span={item.span}
+							isSelected={item.id === selectedLayoutId}
+							onSelectId={onSelectLayout}
+							variant="layout"
+						>
+							{item.label}
+						</Item>
+					))}
+				</Row>
+			)}
 
 			{(captionsEnabled || captionItems.length > 0) && (
 				<Row
@@ -763,11 +798,14 @@ export default function TimelineCanvas({
 	onSelectAnnotation,
 	onSelectAudio,
 	onSelectCaption,
+	onSelectLayout,
 	selectedZoomId,
 	selectedClipId,
 	selectedAnnotationId,
 	selectedAudioId,
 	selectedCaptionId,
+	selectedLayoutId,
+	showLayoutTrack = false,
 	selectAllBlocksActive = false,
 	onClearBlockSelection,
 	keyframes = [],
@@ -807,6 +845,7 @@ export default function TimelineCanvas({
 				onSelectAnnotation?.(null);
 				onSelectAudio?.(null);
 				onSelectCaption?.(null);
+				onSelectLayout?.(null);
 			}
 
 			const rect = e.currentTarget.getBoundingClientRect();
@@ -827,6 +866,7 @@ export default function TimelineCanvas({
 			onSelectAnnotation,
 			onSelectAudio,
 			onSelectCaption,
+			onSelectLayout,
 			onClearBlockSelection,
 			videoDurationMs,
 			sidebarWidth,
@@ -864,6 +904,7 @@ export default function TimelineCanvas({
 				onSelectAnnotation?.(null);
 				onSelectAudio?.(null);
 				onSelectCaption?.(null);
+				onSelectLayout?.(null);
 			}
 
 			const rect = localTimelineRef.current.getBoundingClientRect();
@@ -878,6 +919,7 @@ export default function TimelineCanvas({
 			onSelectAnnotation,
 			onSelectAudio,
 			onSelectCaption,
+			onSelectLayout,
 			onSelectClip,
 			onSelectZoom,
 			videoDurationMs,
@@ -932,18 +974,28 @@ export default function TimelineCanvas({
 		const annotationRowIds = new Set<string>();
 		const audioRowIds = new Set<string>();
 		let hasCaptionRow = false;
+		let hasLayoutRow = false;
 		for (const item of items) {
 			if (isAnnotationTrackRowId(item.rowId)) annotationRowIds.add(item.rowId);
 			if (isAudioTrackRowId(item.rowId)) audioRowIds.add(item.rowId);
 			if (item.rowId === CAPTION_ROW_ID) hasCaptionRow = true;
+			if (item.rowId === LAYOUT_ROW_ID) hasLayoutRow = true;
 		}
 		const sourceAudioRows = showSourceAudioTrack ? sourceAudioTracks.length : 0;
 		// The caption lane is always shown when captions are enabled (even before any cue
 		// exists), so count it whenever captionsEnabled — not only when a caption item is
 		// present — or the min-height/stretch math undersizes the empty lane.
 		const captionRows = hasCaptionRow || captionsEnabled ? 1 : 0;
-		return 2 + sourceAudioRows + annotationRowIds.size + audioRowIds.size + captionRows;
-	}, [items, showSourceAudioTrack, sourceAudioTracks.length, captionsEnabled]);
+		const layoutRows = hasLayoutRow || showLayoutTrack ? 1 : 0;
+		return (
+			2 +
+			sourceAudioRows +
+			annotationRowIds.size +
+			audioRowIds.size +
+			captionRows +
+			layoutRows
+		);
+	}, [items, showSourceAudioTrack, sourceAudioTracks.length, captionsEnabled, showLayoutTrack]);
 	const timelineRowsMinHeightPx = getTimelineRowsMinHeightPx(timelineRowCount);
 	const timelineContentMinHeightPx = getTimelineContentMinHeightPx(timelineRowCount);
 	const timelineViewportStretchFactor = getTimelineViewportStretchFactor(timelineRowCount);
@@ -1040,11 +1092,14 @@ export default function TimelineCanvas({
 					selectedAnnotationId={selectedAnnotationId}
 					selectedAudioId={selectedAudioId}
 					selectedCaptionId={selectedCaptionId}
+					selectedLayoutId={selectedLayoutId}
+					showLayoutTrack={showLayoutTrack}
 					onSelectZoom={onSelectZoom}
 					onSelectClip={onSelectClip}
 					onSelectAnnotation={onSelectAnnotation}
 					onSelectAudio={onSelectAudio}
 					onSelectCaption={onSelectCaption}
+					onSelectLayout={onSelectLayout}
 					sourceAudioTracks={sourceAudioTracks}
 					getSourceAudioTrackSettingsForClip={getSourceAudioTrackSettingsForClip}
 					showSourceAudioTrack={showSourceAudioTrack}

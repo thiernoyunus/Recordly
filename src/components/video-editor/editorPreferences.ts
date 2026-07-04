@@ -51,6 +51,7 @@ type PersistedEditorControls = Pick<
 	| "padding"
 	| "frame"
 	| "webcam"
+	| "layout"
 	| "aspectRatio"
 	| "exportEncodingMode"
 	| "exportBackendPreference"
@@ -139,6 +140,7 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
 	padding: DEFAULT_EDITOR_CONTROLS.padding,
 	frame: DEFAULT_EDITOR_CONTROLS.frame,
 	webcam: DEFAULT_EDITOR_CONTROLS.webcam,
+	layout: DEFAULT_EDITOR_CONTROLS.layout,
 	aspectRatio: DEFAULT_EDITOR_CONTROLS.aspectRatio,
 	exportEncodingMode: DEFAULT_EDITOR_CONTROLS.exportEncodingMode,
 	exportBackendPreference: DEFAULT_EDITOR_CONTROLS.exportBackendPreference,
@@ -338,6 +340,7 @@ function normalizeEditorControls(
 		padding: sanitizedRaw.padding ?? fallback.padding,
 		frame: sanitizedRaw.frame !== undefined ? sanitizedRaw.frame : fallback.frame,
 		webcam: sanitizedRaw.webcam ?? fallback.webcam,
+		layout: sanitizedRaw.layout ?? fallback.layout,
 		aspectRatio: sanitizedRaw.aspectRatio ?? fallback.aspectRatio,
 		exportEncodingMode: sanitizedRaw.exportEncodingMode ?? fallback.exportEncodingMode,
 		exportBackendPreference:
@@ -403,6 +406,7 @@ function normalizeEditorControls(
 		padding: normalized.padding,
 		frame: normalized.frame,
 		webcam: normalized.webcam,
+		layout: normalized.layout,
 		aspectRatio: normalized.aspectRatio,
 		exportEncodingMode: normalized.exportEncodingMode,
 		exportBackendPreference: normalized.exportBackendPreference,

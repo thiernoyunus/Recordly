@@ -4,11 +4,40 @@ import { deriveNextId } from "./projectPersistence";
 import {
 	extendAutoFullTrackClip,
 	findClipAtTimelineTime,
+	getLayoutAtTime,
 	getTimelineDurationMs,
 	mapSourceTimeToTimelineTime,
 	mapTimelineTimeToSourceTime,
 	trimsToClips,
 } from "./types";
+
+describe("getLayoutAtTime", () => {
+	const baseLayout = { mode: "default", splitRatio: 0.4, cameraOnTop: false } as const;
+	const splitLayout = { mode: "split", splitRatio: 0.3, cameraOnTop: true } as const;
+	const cameraLayout = { mode: "camera", splitRatio: 0.4, cameraOnTop: false } as const;
+	const regions = [
+		{ id: "layout-1", startMs: 100, endMs: 200, layout: splitLayout },
+		{ id: "layout-2", startMs: 300, endMs: 400, layout: cameraLayout },
+	];
+
+	it("returns the matching region layout inside a region", () => {
+		expect(getLayoutAtTime(regions, baseLayout, 150)).toBe(splitLayout);
+	});
+
+	it("treats starts as inclusive and ends as exclusive", () => {
+		expect(getLayoutAtTime(regions, baseLayout, 100)).toBe(splitLayout);
+		expect(getLayoutAtTime(regions, baseLayout, 200)).toBe(baseLayout);
+	});
+
+	it("falls back to the base layout between regions", () => {
+		expect(getLayoutAtTime(regions, baseLayout, 250)).toBe(baseLayout);
+	});
+
+	it("falls back to the base layout for empty or missing regions", () => {
+		expect(getLayoutAtTime([], baseLayout, 150)).toBe(baseLayout);
+		expect(getLayoutAtTime(undefined, baseLayout, 150)).toBe(baseLayout);
+	});
+});
 
 describe("extendAutoFullTrackClip", () => {
 	it("extends the default full-track clip when metadata duration grows", () => {
@@ -155,7 +184,12 @@ describe("clip timeline mapping", () => {
 		);
 
 		expect(clipsFromTrims.map((clip) => clip.id)).toEqual(["clip-1", "clip-2", "clip-3"]);
-		expect(deriveNextId("clip", clipsFromTrims.map((clip) => clip.id))).toBe(4);
+		expect(
+			deriveNextId(
+				"clip",
+				clipsFromTrims.map((clip) => clip.id),
+			),
+		).toBe(4);
 	});
 });
 
@@ -171,10 +205,7 @@ describe("getTimelineDurationMs", () => {
 
 	it("keeps the source duration when speed edits make clips shorter", () => {
 		expect(
-			getTimelineDurationMs(
-				[{ id: "clip-1", startMs: 0, endMs: 5_000, speed: 2 }],
-				10_000,
-			),
+			getTimelineDurationMs([{ id: "clip-1", startMs: 0, endMs: 5_000, speed: 2 }], 10_000),
 		).toBe(10_000);
 	});
 });

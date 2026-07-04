@@ -3,12 +3,14 @@ import type {
 	AudioRegion,
 	CaptionCue,
 	ClipRegion,
+	LayoutRegion,
 	SpeedRegion,
 	ZoomRegion,
 } from "./types";
 
 export type EditorHistorySnapshot = {
 	zoomRegions: ZoomRegion[];
+	layoutRegions: LayoutRegion[];
 	clipRegions: ClipRegion[];
 	speedRegions: SpeedRegion[];
 	annotationRegions: AnnotationRegion[];
@@ -44,9 +46,7 @@ export function resetEditorHistoryStack(stack: EditorHistoryStack): void {
 	stack.future = [];
 }
 
-export function cloneEditorHistorySnapshot(
-	snapshot: EditorHistorySnapshot,
-): EditorHistorySnapshot {
+export function cloneEditorHistorySnapshot(snapshot: EditorHistorySnapshot): EditorHistorySnapshot {
 	return globalThis.structuredClone(snapshot);
 }
 

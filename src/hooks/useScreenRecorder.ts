@@ -32,9 +32,10 @@ const RECORDING_FILE_PREFIX = "recording-";
 const AUDIO_BITRATE_VOICE = 128_000;
 const AUDIO_BITRATE_SYSTEM = 192_000;
 const MIC_GAIN_BOOST = 1.4;
-const WEBCAM_BITRATE = 8_000_000;
-const WEBCAM_WIDTH = 1280;
-const WEBCAM_HEIGHT = 720;
+// 1080p ideal — cameras that can't do it fall back to their best mode.
+const WEBCAM_BITRATE = 12_000_000;
+const WEBCAM_WIDTH = 1920;
+const WEBCAM_HEIGHT = 1080;
 const WEBCAM_FRAME_RATE = 30;
 const WEBCAM_SUFFIX = "-webcam";
 const MICROPHONE_FALLBACK_ERROR_TOAST_ID = "recording-microphone-fallback-error";
@@ -973,6 +974,18 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						},
 				audio: false,
 			});
+
+			const webcamTrackSettings = webcamStream.current.getVideoTracks()[0]?.getSettings();
+			console.info("[webcam] negotiated capture settings:", webcamTrackSettings);
+			if (
+				webcamTrackSettings?.width &&
+				webcamTrackSettings.width < WEBCAM_WIDTH / 2
+			) {
+				console.warn(
+					"[webcam] camera negotiated far below requested resolution; recording may be degraded",
+					webcamTrackSettings,
+				);
+			}
 
 			const mimeType = selectWebcamMimeType();
 			webcamChunks.current = [];

@@ -8,7 +8,9 @@ import type {
 	CursorClickEffectStyle,
 	CursorStyle,
 	CursorTelemetryPoint,
+	LayoutRegion,
 	Padding,
+	SceneLayoutSettings,
 	SourceAudioTrackSettings,
 	SpeedRegion,
 	TrimRegion,
@@ -122,6 +124,8 @@ interface VideoExporterConfig extends ExportConfig {
 	cropRegion: CropRegion;
 	webcam?: WebcamOverlaySettings;
 	webcamUrl?: string | null;
+	layout?: SceneLayoutSettings;
+	layoutRegions?: LayoutRegion[];
 	annotationRegions?: AnnotationRegion[];
 	autoCaptions?: CaptionCue[];
 	autoCaptionSettings?: AutoCaptionSettings;
@@ -611,6 +615,8 @@ export class ModernVideoExporter {
 					cropRegion: this.config.cropRegion,
 					webcam: this.config.webcam,
 					webcamUrl: this.config.webcamUrl,
+					layout: this.config.layout,
+					layoutRegions: this.config.layoutRegions,
 					videoWidth: videoInfo.width,
 					videoHeight: videoInfo.height,
 					annotationRegions: this.config.annotationRegions,
@@ -1539,6 +1545,12 @@ export class ModernVideoExporter {
 		}
 		if (hasCursorClickEffect) {
 			reasons.push("unsupported-cursor-click-effect");
+		}
+		if (
+			(this.config.layout && this.config.layout.mode !== "default") ||
+			(this.config.layoutRegions ?? []).some((region) => region.layout.mode !== "default")
+		) {
+			reasons.push("unsupported-scene-layout");
 		}
 
 		const hasZoomRegions = (this.config.zoomRegions ?? []).length > 0;

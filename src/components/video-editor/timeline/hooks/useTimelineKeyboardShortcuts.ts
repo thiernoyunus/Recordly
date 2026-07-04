@@ -16,6 +16,7 @@ interface UseTimelineKeyboardShortcutsParams {
 	selectedAnnotationId?: string | null;
 	selectedAudioId?: string | null;
 	selectedCaptionId?: string | null;
+	selectedLayoutId?: string | null;
 	selectAllBlocksActive: boolean;
 	addKeyframe: () => void;
 	handleAddZoom: () => void;
@@ -27,6 +28,7 @@ interface UseTimelineKeyboardShortcutsParams {
 	deleteSelectedAnnotation: () => void;
 	deleteSelectedAudio: () => void;
 	deleteSelectedCaption: () => void;
+	deleteSelectedLayout: () => void;
 	cycleAnnotationsAtCurrentTime: (backward?: boolean) => boolean;
 }
 
@@ -43,6 +45,7 @@ export function useTimelineKeyboardShortcuts({
 	selectedAnnotationId,
 	selectedAudioId,
 	selectedCaptionId,
+	selectedLayoutId,
 	selectAllBlocksActive,
 	addKeyframe,
 	handleAddZoom,
@@ -54,6 +57,7 @@ export function useTimelineKeyboardShortcuts({
 	deleteSelectedAnnotation,
 	deleteSelectedAudio,
 	deleteSelectedCaption,
+	deleteSelectedLayout,
 	cycleAnnotationsAtCurrentTime,
 }: UseTimelineKeyboardShortcutsParams) {
 	useEffect(() => {
@@ -107,6 +111,7 @@ export function useTimelineKeyboardShortcuts({
 					selectedAnnotationId,
 					selectedAudioId,
 					selectedCaptionId,
+					selectedLayoutId,
 				});
 				if (target !== "none") {
 					e.preventDefault();
@@ -123,6 +128,8 @@ export function useTimelineKeyboardShortcuts({
 					deleteSelectedAudio();
 				} else if (target === "caption") {
 					deleteSelectedCaption();
+				} else if (target === "layout") {
+					deleteSelectedLayout();
 				}
 			}
 		};
@@ -140,6 +147,7 @@ export function useTimelineKeyboardShortcuts({
 		deleteSelectedClip,
 		deleteSelectedKeyframe,
 		deleteSelectedZoom,
+		deleteSelectedLayout,
 		handleAddAnnotation,
 		handleAddZoom,
 		handleSplitClip,
@@ -151,6 +159,7 @@ export function useTimelineKeyboardShortcuts({
 		selectedAnnotationId,
 		selectedAudioId,
 		selectedCaptionId,
+		selectedLayoutId,
 		selectedClipId,
 		selectedKeyframeId,
 		selectedZoomId,

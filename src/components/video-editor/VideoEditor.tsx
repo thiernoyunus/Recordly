@@ -204,6 +204,7 @@ import {
 	DEFAULT_CROP_REGION,
 	DEFAULT_CURSOR_STYLE,
 	DEFAULT_FIGURE_DATA,
+	DEFAULT_SCENE_LAYOUT,
 	DEFAULT_WEBCAM_OVERLAY,
 	DEFAULT_WEBCAM_TIME_OFFSET_MS,
 	DEFAULT_ZOOM_IN_DURATION_MS,
@@ -217,9 +218,11 @@ import {
 	type FigureData,
 	getClipSourceEndMs,
 	getTimelineDurationMs,
+	type LayoutRegion,
 	type Padding,
 	mapSourceTimeToTimelineTime as resolveSourceTimeToTimelineTime,
 	mapTimelineTimeToSourceTime as resolveTimelineTimeToSourceTime,
+	type SceneLayoutSettings,
 	type SpeedRegion,
 	type TrimRegion,
 	trimsToClips,
@@ -533,8 +536,10 @@ export default function VideoEditor() {
 	const [webcam, setWebcam] = useState<WebcamOverlaySettings>(
 		initialEditorPreferences.webcam ?? DEFAULT_WEBCAM_OVERLAY,
 	);
+	const [layout, setLayout] = useState<SceneLayoutSettings>({ ...DEFAULT_SCENE_LAYOUT });
 	const [resolvedWebcamVideoUrl, setResolvedWebcamVideoUrl] = useState<string | null>(null);
 	const [zoomRegions, setZoomRegions] = useState<ZoomRegion[]>([]);
+	const [layoutRegions, setLayoutRegions] = useState<LayoutRegion[]>([]);
 	const [cursorTelemetry, setCursorTelemetry] = useState<CursorTelemetryPoint[]>([]);
 	// Tracks the videoSourcePath for which the cursor telemetry IPC has already
 	// resolved. The smoke-export auto-trigger waits on this so long recordings
@@ -543,6 +548,7 @@ export default function VideoEditor() {
 	// after encoding has started.
 	const [cursorTelemetrySourcePath, setCursorTelemetrySourcePath] = useState<string | null>(null);
 	const [selectedZoomId, setSelectedZoomId] = useState<string | null>(null);
+	const [selectedLayoutId, setSelectedLayoutId] = useState<string | null>(null);
 	const [trimRegions, setTrimRegions] = useState<TrimRegion[]>([]);
 	const [clipRegions, setClipRegions] = useState<ClipRegion[]>([]);
 	const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
@@ -684,6 +690,7 @@ export default function VideoEditor() {
 	const projectNameInputRef = useRef<HTMLInputElement | null>(null);
 	const projectSaveDialogInputRef = useRef<HTMLInputElement | null>(null);
 	const nextZoomIdRef = useRef(1);
+	const nextLayoutIdRef = useRef(1);
 	const nextClipIdRef = useRef(1);
 	const nextAudioIdRef = useRef(1);
 
@@ -793,6 +800,7 @@ export default function VideoEditor() {
 			frame,
 			cropRegion: { ...cropRegion },
 			webcam: { ...webcam },
+			layout: { ...layout },
 			aspectRatio,
 			exportEncodingMode,
 			exportBackendPreference,
@@ -850,6 +858,7 @@ export default function VideoEditor() {
 			frame,
 			cropRegion,
 			webcam,
+			layout,
 			aspectRatio,
 			exportEncodingMode,
 			exportBackendPreference,
@@ -948,6 +957,7 @@ export default function VideoEditor() {
 		setFrame(snapshot.frame);
 		setCropRegion({ ...snapshot.cropRegion });
 		setWebcam({ ...snapshot.webcam });
+		setLayout({ ...snapshot.layout });
 		setAspectRatio(snapshot.aspectRatio);
 		setExportEncodingMode(snapshot.exportEncodingMode);
 		setExportBackendPreference(snapshot.exportBackendPreference);
@@ -1168,6 +1178,8 @@ export default function VideoEditor() {
 					padding,
 					cropRegion,
 					webcam,
+					layout,
+					layoutRegions,
 					webcamUrl:
 						resolvedWebcamVideoUrl ??
 						(webcam.sourcePath ? toFileUrl(webcam.sourcePath) : null),
@@ -1313,6 +1325,8 @@ export default function VideoEditor() {
 		speedRegions,
 		wallpaper,
 		webcam,
+		layout,
+		layoutRegions,
 		zoomInDurationMs,
 		zoomInEasing,
 		zoomInOverlapMs,
@@ -1710,7 +1724,9 @@ export default function VideoEditor() {
 				frame: string | null;
 				cropRegion: CropRegion;
 				webcam: WebcamOverlaySettings;
+				layout: SceneLayoutSettings;
 				zoomRegions: ZoomRegion[];
+				layoutRegions: LayoutRegion[];
 				trimRegions: TrimRegion[];
 				clipRegions: ClipRegion[];
 				speedRegions: SpeedRegion[];
@@ -1833,7 +1849,9 @@ export default function VideoEditor() {
 				frame,
 				cropRegion,
 				webcam,
+				layout,
 				zoomRegions,
+				layoutRegions,
 				trimRegions,
 				clipRegions,
 				speedRegions,
@@ -1899,7 +1917,9 @@ export default function VideoEditor() {
 			padding,
 			cropRegion,
 			webcam,
+			layout,
 			zoomRegions,
+			layoutRegions,
 			trimRegions,
 			clipRegions,
 			speedRegions,
@@ -1926,6 +1946,7 @@ export default function VideoEditor() {
 	const buildHistorySnapshot = useCallback((): EditorHistorySnapshot => {
 		return {
 			zoomRegions,
+			layoutRegions,
 			clipRegions,
 			speedRegions,
 			annotationRegions,
@@ -1938,6 +1959,7 @@ export default function VideoEditor() {
 		};
 	}, [
 		zoomRegions,
+		layoutRegions,
 		clipRegions,
 		speedRegions,
 		annotationRegions,
@@ -1953,6 +1975,7 @@ export default function VideoEditor() {
 		applyingHistoryRef.current = true;
 		const cloned = cloneStructured(snapshot);
 		setZoomRegions(cloned.zoomRegions);
+		setLayoutRegions(cloned.layoutRegions);
 		setClipRegions(cloned.clipRegions);
 		setSpeedRegions(cloned.speedRegions);
 		setAnnotationRegions(cloned.annotationRegions);
@@ -1966,6 +1989,10 @@ export default function VideoEditor() {
 		nextZoomIdRef.current = deriveNextId(
 			"zoom",
 			cloned.zoomRegions.map((region) => region.id),
+		);
+		nextLayoutIdRef.current = deriveNextId(
+			"layout",
+			cloned.layoutRegions.map((region) => region.id),
 		);
 		nextClipIdRef.current = deriveNextId(
 			"clip",
@@ -1981,6 +2008,9 @@ export default function VideoEditor() {
 		);
 		nextAnnotationZIndexRef.current =
 			cloned.annotationRegions.reduce((max, region) => Math.max(max, region.zIndex), 0) + 1;
+		setSelectedLayoutId((prev) =>
+			prev && cloned.layoutRegions.some((region) => region.id === prev) ? prev : null,
+		);
 	}, []);
 
 	const handleUndo = useCallback(() => {
@@ -2089,7 +2119,9 @@ export default function VideoEditor() {
 			setFrame(normalizedEditor.frame);
 			setCropRegion(normalizedEditor.cropRegion);
 			setWebcam(normalizedEditor.webcam);
+			setLayout(normalizedEditor.layout);
 			setZoomRegions(normalizedEditor.zoomRegions);
+			setLayoutRegions(normalizedEditor.layoutRegions);
 			setTrimRegions(normalizedEditor.trimRegions);
 			setClipRegions(normalizedEditor.clipRegions);
 			clipInitializedRef.current = normalizedEditor.clipRegions.length > 0;
@@ -2121,10 +2153,15 @@ export default function VideoEditor() {
 			setSelectedClipId(null);
 			setSelectedAnnotationId(null);
 			setSelectedAudioId(null);
+			setSelectedLayoutId(null);
 
 			nextZoomIdRef.current = deriveNextId(
 				"zoom",
 				normalizedEditor.zoomRegions.map((region) => region.id),
+			);
+			nextLayoutIdRef.current = deriveNextId(
+				"layout",
+				normalizedEditor.layoutRegions.map((region) => region.id),
 			);
 			nextClipIdRef.current = deriveNextId(
 				"clip",
@@ -2268,6 +2305,7 @@ export default function VideoEditor() {
 
 	const resetSourceScopedEditorState = useCallback(() => {
 		setZoomRegions([]);
+		setLayoutRegions([]);
 		setTrimRegions([]);
 		setClipRegions([]);
 		clipInitializedRef.current = false;
@@ -2287,7 +2325,9 @@ export default function VideoEditor() {
 		setSelectedClipId(null);
 		setSelectedAnnotationId(null);
 		setSelectedAudioId(null);
+		setSelectedLayoutId(null);
 		nextZoomIdRef.current = 1;
+		nextLayoutIdRef.current = 1;
 		nextClipIdRef.current = 1;
 		nextAudioIdRef.current = 1;
 		nextAnnotationIdRef.current = 1;
@@ -2455,6 +2495,7 @@ export default function VideoEditor() {
 						// overwrite the last-used padding, aspect ratio, export
 						// settings, etc. that were saved to localStorage.
 						setPadding(initialEditorPreferences.padding);
+						setLayout({ ...DEFAULT_SCENE_LAYOUT });
 						setBorderRadius(initialEditorPreferences.borderRadius);
 						setAspectRatio(initialEditorPreferences.aspectRatio);
 						setExportFormat(initialEditorPreferences.exportFormat);
@@ -2637,6 +2678,7 @@ export default function VideoEditor() {
 			padding,
 			frame,
 			webcam,
+			layout,
 			aspectRatio,
 			exportEncodingMode,
 			exportBackendPreference,
@@ -2693,6 +2735,7 @@ export default function VideoEditor() {
 		padding,
 		frame,
 		webcam,
+		layout,
 		aspectRatio,
 		exportEncodingMode,
 		exportBackendPreference,
@@ -3539,6 +3582,19 @@ export default function VideoEditor() {
 		[zoomRegions, mapTimelineTimeToSourceTime],
 	);
 
+	// Layout regions are stored/edited in timeline space (matches the timeline
+	// track), but playback/export evaluate against source-video time — same
+	// space mismatch that effectiveZoomRegions corrects for zoom regions.
+	const effectiveLayoutRegions = useMemo<LayoutRegion[]>(
+		() =>
+			layoutRegions.map((region) => ({
+				...region,
+				startMs: mapTimelineTimeToSourceTime(region.startMs),
+				endMs: mapTimelineTimeToSourceTime(region.endMs),
+			})),
+		[layoutRegions, mapTimelineTimeToSourceTime],
+	);
+
 	const effectiveCaptionRegions = useMemo<CaptionCue[]>(
 		() =>
 			autoCaptions.map((cue) => ({
@@ -3666,6 +3722,7 @@ export default function VideoEditor() {
 			setSelectedClipId(null);
 			setSelectedAnnotationId(null);
 			setSelectedAudioId(null);
+			setSelectedLayoutId(null);
 			const cue = autoCaptions.find((value) => value.id === id);
 			if (cue) {
 				handleSeek(mapSourceTimeToTimelineTime(cue.startMs) / 1000, { pause: true });
@@ -3751,6 +3808,7 @@ export default function VideoEditor() {
 			setSelectedClipId(null);
 			setSelectedAnnotationId(null);
 			setSelectedAudioId(null);
+			setSelectedLayoutId(null);
 			handleSeek(span.start / 1000, { pause: true });
 		},
 		[handleSeek, mapTimelineTimeToSourceTime],
@@ -3779,6 +3837,7 @@ export default function VideoEditor() {
 			setSelectedAnnotationId(null);
 			setSelectedAudioId(null);
 			setSelectedCaptionId(null);
+			setSelectedLayoutId(null);
 		} else {
 			setActiveEffectSection((s) => (s === "zoom" ? "scene" : s));
 		}
@@ -3790,6 +3849,7 @@ export default function VideoEditor() {
 			setSelectedZoomId(null);
 			setSelectedAudioId(null);
 			setSelectedCaptionId(null);
+			setSelectedLayoutId(null);
 		}
 	}, []);
 
@@ -3813,6 +3873,7 @@ export default function VideoEditor() {
 			setSelectedZoomId(id);
 			setSelectedAnnotationId(null);
 			setSelectedCaptionId(null);
+			setSelectedLayoutId(null);
 			extensionHost.emitEvent({
 				type: "timeline:region-added",
 				data: { id, startMs: newRegion.startMs, endMs: newRegion.endMs },
@@ -4009,6 +4070,115 @@ export default function VideoEditor() {
 		[selectedZoomId],
 	);
 
+	const handleSelectLayout = useCallback(
+		(id: string | null) => {
+			setSelectedLayoutId(id);
+			if (id) {
+				setActiveEffectSection("layout");
+				setSelectedZoomId(null);
+				setSelectedAnnotationId(null);
+				setSelectedAudioId(null);
+				setSelectedCaptionId(null);
+
+				// Screen-framing drag only activates while the playhead sits inside
+				// the selected region, so jump there on select instead of leaving
+				// the user to hunt for it (matches how most timeline editors behave).
+				// Region bounds and handleSeek are timeline-space; currentTime is
+				// source-space, so map it before comparing.
+				const region = layoutRegions.find((r) => r.id === id);
+				if (region) {
+					const currentTimelineMs = mapSourceTimeToTimelineTime(currentTime * 1000);
+					if (currentTimelineMs < region.startMs || currentTimelineMs >= region.endMs) {
+						handleSeek(region.startMs / 1000, { pause: true });
+					}
+				}
+			} else {
+				setActiveEffectSection((s) => (s === "layout" ? "scene" : s));
+			}
+		},
+		[layoutRegions, currentTime, mapSourceTimeToTimelineTime, handleSeek],
+	);
+
+	const handleLayoutAdded = useCallback((span: Span) => {
+		const id = `layout-${nextLayoutIdRef.current++}`;
+		const newRegion: LayoutRegion = {
+			id,
+			startMs: Math.round(span.start),
+			endMs: Math.round(span.end),
+			layout: { mode: "split", splitRatio: 0.4, cameraOnTop: false },
+		};
+		setLayoutRegions((prev) => [...prev, newRegion]);
+		setSelectedLayoutId(id);
+		setActiveEffectSection("layout");
+		setSelectedZoomId(null);
+		setSelectedAnnotationId(null);
+		setSelectedAudioId(null);
+		setSelectedCaptionId(null);
+		extensionHost.emitEvent({
+			type: "timeline:region-added",
+			data: { id, startMs: newRegion.startMs, endMs: newRegion.endMs },
+		});
+	}, []);
+
+	const handleLayoutSpanChange = useCallback((id: string, span: Span) => {
+		setLayoutRegions((prev) =>
+			prev.map((region) =>
+				region.id === id
+					? {
+							...region,
+							startMs: Math.round(span.start),
+							endMs: Math.round(span.end),
+						}
+					: region,
+			),
+		);
+	}, []);
+
+	const handleLayoutSettingsChange = useCallback(
+		(nextLayout: SceneLayoutSettings) => {
+			if (!selectedLayoutId) return;
+			setLayoutRegions((prev) =>
+				prev.map((region) =>
+					region.id === selectedLayoutId ? { ...region, layout: nextLayout } : region,
+				),
+			);
+		},
+		[selectedLayoutId],
+	);
+
+	const handleLayoutScreenFocusChange = useCallback(
+		(regionId: string | null, focus: { x: number; y: number }) => {
+			const nextFocus = {
+				screenFocusX: focus.x,
+				screenFocusY: focus.y,
+			};
+			if (regionId === null) {
+				setLayout((current) => ({ ...current, ...nextFocus }));
+				return;
+			}
+
+			setLayoutRegions((prev) =>
+				prev.map((region) =>
+					region.id === regionId
+						? { ...region, layout: { ...region.layout, ...nextFocus } }
+						: region,
+				),
+			);
+		},
+		[],
+	);
+
+	const handleLayoutDelete = useCallback(
+		(id: string) => {
+			setLayoutRegions((prev) => prev.filter((region) => region.id !== id));
+			if (selectedLayoutId === id) {
+				setSelectedLayoutId(null);
+			}
+			extensionHost.emitEvent({ type: "timeline:region-removed", data: { id } });
+		},
+		[selectedLayoutId],
+	);
+
 	const handleSelectClip = useCallback((id: string | null) => {
 		setSelectedClipId(id);
 		if (id) {
@@ -4017,6 +4187,7 @@ export default function VideoEditor() {
 			setSelectedAnnotationId(null);
 			setSelectedAudioId(null);
 			setSelectedCaptionId(null);
+			setSelectedLayoutId(null);
 		} else {
 			setActiveEffectSection((s) => (s === "clip" ? "scene" : s));
 		}
@@ -4089,6 +4260,20 @@ export default function VideoEditor() {
 							return zoom;
 						}),
 					);
+					setLayoutRegions((prev) =>
+						prev.map((region) => {
+							const overlaps =
+								region.startMs < oldClip.endMs && region.endMs > oldClip.startMs;
+							if (overlaps) {
+								return {
+									...region,
+									startMs: region.startMs + delta,
+									endMs: region.endMs + delta,
+								};
+							}
+							return region;
+						}),
+					);
 				}
 			}
 
@@ -4108,6 +4293,7 @@ export default function VideoEditor() {
 				setAnnotationRegions((prev) => removeTrimmedRegions(prev));
 				setSpeedRegions((prev) => removeTrimmedRegions(prev));
 				setAudioRegions((prev) => removeTrimmedRegions(prev));
+				setLayoutRegions((prev) => removeTrimmedRegions(prev));
 			}
 
 			setClipRegions((prev) =>
@@ -4194,6 +4380,9 @@ export default function VideoEditor() {
 				setAudioRegions((prev) =>
 					prev.filter((region) => region.endMs <= startMs || region.startMs >= endMs),
 				);
+				setLayoutRegions((prev) =>
+					prev.filter((region) => region.endMs <= startMs || region.startMs >= endMs),
+				);
 			}
 			if (selectedClipId === id) {
 				setSelectedClipId(null);
@@ -4208,6 +4397,7 @@ export default function VideoEditor() {
 			setSelectedZoomId(null);
 			setSelectedAnnotationId(null);
 			setSelectedCaptionId(null);
+			setSelectedLayoutId(null);
 			setActiveEffectSection("audio");
 		}
 	}, []);
@@ -4228,6 +4418,7 @@ export default function VideoEditor() {
 		setSelectedZoomId(null);
 		setSelectedAnnotationId(null);
 		setSelectedCaptionId(null);
+		setSelectedLayoutId(null);
 		setActiveEffectSection("audio");
 	}, []);
 
@@ -4536,6 +4727,12 @@ export default function VideoEditor() {
 		}
 	}, [selectedCaptionId, autoCaptions]);
 
+	useEffect(() => {
+		if (selectedLayoutId && !layoutRegions.some((region) => region.id === selectedLayoutId)) {
+			setSelectedLayoutId(null);
+		}
+	}, [selectedLayoutId, layoutRegions]);
+
 	const showExportSuccessToast = useCallback((filePath: string) => {
 		toast.success(`Exported successfully to ${filePath}`, {
 			action: {
@@ -4637,6 +4834,8 @@ export default function VideoEditor() {
 						videoPadding: padding,
 						cropRegion,
 						webcam,
+						layout,
+						layoutRegions: effectiveLayoutRegions,
 						webcamUrl:
 							resolvedWebcamVideoUrl ??
 							(webcam.sourcePath ? toFileUrl(webcam.sourcePath) : null),
@@ -4820,6 +5019,8 @@ export default function VideoEditor() {
 						padding,
 						cropRegion,
 						webcam,
+						layout,
+						layoutRegions: effectiveLayoutRegions,
 						webcamUrl:
 							resolvedWebcamVideoUrl ??
 							(webcam.sourcePath ? toFileUrl(webcam.sourcePath) : null),
@@ -5131,6 +5332,8 @@ export default function VideoEditor() {
 			padding,
 			cropRegion,
 			webcam,
+			layout,
+			effectiveLayoutRegions,
 			resolvedWebcamVideoUrl,
 			annotationRegions,
 			autoCaptions,
@@ -5531,8 +5734,10 @@ export default function VideoEditor() {
 			wallpaper={wallpaper}
 			zoomRegions={effectiveZoomRegions}
 			selectedZoomId={selectedZoomId}
+			selectedLayoutId={selectedLayoutId}
 			onSelectZoom={handleSelectZoom}
 			onZoomFocusChange={handleZoomFocusChange}
+			onLayoutScreenFocusChange={handleLayoutScreenFocusChange}
 			isPlaying={isPlaying}
 			showShadow={shadowIntensity > 0}
 			shadowIntensity={shadowIntensity}
@@ -5551,6 +5756,8 @@ export default function VideoEditor() {
 			frame={frame}
 			cropRegion={cropRegion}
 			webcam={webcam}
+			layout={layout}
+			layoutRegions={effectiveLayoutRegions}
 			webcamVideoPath={webcam.sourcePath ? resolvedWebcamVideoUrl : null}
 			trimRegions={trimRegions}
 			speedRegions={effectiveSpeedRegions}
@@ -6487,10 +6694,23 @@ export default function VideoEditor() {
 								borderRadius={borderRadius}
 								onBorderRadiusChange={setBorderRadius}
 								webcam={webcam}
+								layout={layout}
+								layoutRegions={layoutRegions}
+								selectedLayoutId={selectedLayoutId}
+								selectedLayoutSettings={
+									selectedLayoutId
+										? (layoutRegions.find((r) => r.id === selectedLayoutId)
+												?.layout ?? null)
+										: null
+								}
+								onSelectedLayoutSettingsChange={handleLayoutSettingsChange}
+								onLayoutDelete={handleLayoutDelete}
 								webcamPreviewSrc={webcam.sourcePath ? resolvedWebcamVideoUrl : null}
 								webcamPreviewCurrentTime={currentTime}
 								webcamPreviewPlaying={isPlaying}
 								onWebcamChange={setWebcam}
+								onLayoutChange={setLayout}
+								onLayoutRegionsChange={setLayoutRegions}
 								onUploadWebcam={handleUploadWebcam}
 								onClearWebcam={handleClearWebcam}
 								padding={padding}
@@ -6677,6 +6897,15 @@ export default function VideoEditor() {
 										>
 											{t("timeline.audio.label")}
 										</DropdownMenuItem>
+										{(previewAspectRatioValue < 1 ||
+											layoutRegions.length > 0) && (
+											<DropdownMenuItem
+												onClick={() => timelineRef.current?.addLayout()}
+												className="text-muted-foreground hover:text-foreground hover:bg-foreground/10 cursor-pointer"
+											>
+												{t("timeline.layout.label")}
+											</DropdownMenuItem>
+										)}
 									</DropdownMenuContent>
 								</DropdownMenu>
 								<div className="w-[1px] h-4 bg-foreground/10 mx-1" />
@@ -6842,6 +7071,13 @@ export default function VideoEditor() {
 						onAudioDelete={handleAudioDelete}
 						selectedAudioId={selectedAudioId}
 						onSelectAudio={handleSelectAudio}
+						layoutRegions={layoutRegions}
+						onLayoutAdded={handleLayoutAdded}
+						onLayoutSpanChange={handleLayoutSpanChange}
+						onLayoutDelete={handleLayoutDelete}
+						selectedLayoutId={selectedLayoutId}
+						onSelectLayout={handleSelectLayout}
+						showLayoutTrack={previewAspectRatioValue < 1 || layoutRegions.length > 0}
 						captionRegions={effectiveCaptionRegions}
 						onCaptionSpanChange={(id, span) =>
 							handleCaptionRetime(id, {

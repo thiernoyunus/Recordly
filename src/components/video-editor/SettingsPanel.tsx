@@ -40,7 +40,7 @@ import {
 	getAvailableWallpapers,
 	isVideoWallpaperSource,
 } from "@/lib/wallpapers";
-import { type AspectRatio } from "@/utils/aspectRatioUtils";
+import { type AspectRatio, getAspectRatioValue } from "@/utils/aspectRatioUtils";
 import { useI18n, useScopedT } from "../../contexts/I18nContext";
 import type { AppLocale } from "../../i18n/config";
 import { SUPPORTED_LOCALES } from "../../i18n/config";
@@ -66,7 +66,10 @@ import type {
 	CursorStyle,
 	EditorEffectSection,
 	FigureData,
+	LayoutRegion,
 	Padding,
+	SceneLayoutMode,
+	SceneLayoutSettings,
 	WebcamOverlaySettings,
 	WebcamPositionPreset,
 	ZoomDepth,
@@ -90,6 +93,7 @@ import {
 	DEFAULT_CURSOR_STYLE,
 	DEFAULT_CURSOR_SWAY,
 	DEFAULT_PADDING,
+	DEFAULT_SCENE_LAYOUT,
 	DEFAULT_WEBCAM_CORNER_RADIUS,
 	DEFAULT_WEBCAM_MARGIN,
 	DEFAULT_WEBCAM_POSITION_PRESET,
@@ -101,6 +105,8 @@ import {
 	DEFAULT_ZOOM_IN_DURATION_MS,
 	DEFAULT_ZOOM_MOTION_BLUR_TUNING,
 	DEFAULT_ZOOM_OUT_DURATION_MS,
+	SCENE_LAYOUT_SPLIT_RATIO_MAX,
+	SCENE_LAYOUT_SPLIT_RATIO_MIN,
 } from "./types";
 import { fromCursorSwaySliderValue, toCursorSwaySliderValue } from "./videoPlayback/cursorSway";
 import { isZeroPadding } from "./videoPlayback/layoutUtils";
@@ -213,6 +219,98 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 		<p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
 			{children}
 		</p>
+	);
+}
+
+/**
+ * Mode buttons + camera-size slider + camera-on-top switch shared between the
+ * project-level Layout section and the per-region Layout sidebar section.
+ * Props are deliberately generic (value/onChange) so both callers can bind it
+ * to whichever SceneLayoutSettings they're editing.
+ */
+function SceneLayoutControls({
+	value,
+	onChange,
+	tSettings,
+}: {
+	value: SceneLayoutSettings;
+	onChange: (patch: Partial<SceneLayoutSettings>) => void;
+	tSettings: (key: string, fallback?: string) => string;
+}) {
+	const modeOptions: Array<{ mode: SceneLayoutMode; label: string }> = [
+		{ mode: "default", label: tSettings("layout.modeDefault", "Default") },
+		{ mode: "split", label: tSettings("layout.modeSplit", "Split") },
+		{ mode: "camera", label: tSettings("layout.modeCamera", "Camera") },
+		{ mode: "screen", label: tSettings("layout.modeScreen", "Screen") },
+	];
+	const hasCustomScreenFocus =
+		(value.mode === "split" || value.mode === "screen") &&
+		((value.screenFocusX ?? 0.5) !== 0.5 || (value.screenFocusY ?? 0.5) !== 0.5);
+
+	return (
+		<>
+			{hasCustomScreenFocus ? (
+				<div className="flex justify-end">
+					<button
+						type="button"
+						onClick={() =>
+							onChange({
+								screenFocusX: undefined,
+								screenFocusY: undefined,
+							})
+						}
+						className="text-[10px] text-[#2563EB] transition-opacity hover:opacity-80"
+					>
+						{tSettings("layout.resetFraming", "Reset framing")}
+					</button>
+				</div>
+			) : null}
+			<div className="grid grid-cols-4 gap-1.5">
+				{modeOptions.map((option) => {
+					const isActive = value.mode === option.mode;
+					return (
+						<Button
+							key={option.mode}
+							type="button"
+							onClick={() => onChange({ mode: option.mode })}
+							className={cn(
+								"h-8 rounded-lg border px-0 text-xs font-semibold transition-all",
+								isActive
+									? "border-[#2563EB] bg-[#2563EB] text-white"
+									: "border-foreground/10 bg-foreground/5 text-muted-foreground hover:border-foreground/20 hover:bg-foreground/10",
+							)}
+						>
+							{option.label}
+						</Button>
+					);
+				})}
+			</div>
+			{value.mode === "split" ? (
+				<>
+					<SliderControl
+						label={tSettings("layout.cameraSize", "Camera size")}
+						value={value.splitRatio * 100}
+						defaultValue={DEFAULT_SCENE_LAYOUT.splitRatio * 100}
+						min={SCENE_LAYOUT_SPLIT_RATIO_MIN * 100}
+						max={SCENE_LAYOUT_SPLIT_RATIO_MAX * 100}
+						step={1}
+						onChange={(v) => onChange({ splitRatio: v / 100 })}
+						formatValue={(v) => `${Math.round(v)}%`}
+						parseInput={(text) => parseFloat(text.replace(/%$/, ""))}
+					/>
+					<div className="flex items-center justify-between rounded-lg bg-foreground/[0.03] px-2.5 py-1.5">
+						<span className="text-[10px] text-muted-foreground">
+							{tSettings("layout.cameraOnTop", "Camera on top")}
+						</span>
+						<Switch
+							checked={value.cameraOnTop}
+							onCheckedChange={(v) => onChange({ cameraOnTop: v })}
+							className="data-[state=checked]:bg-[#2563EB] scale-75"
+						/>
+					</div>
+				</>
+			) : null}
+		</>
 	);
 }
 
@@ -807,6 +905,14 @@ interface SettingsPanelProps {
 	webcamPreviewCurrentTime?: number;
 	webcamPreviewPlaying?: boolean;
 	onWebcamChange?: (webcam: WebcamOverlaySettings) => void;
+	layout?: SceneLayoutSettings;
+	onLayoutChange?: (layout: SceneLayoutSettings) => void;
+	layoutRegions?: LayoutRegion[];
+	onLayoutRegionsChange?: (regions: LayoutRegion[]) => void;
+	selectedLayoutId?: string | null;
+	selectedLayoutSettings?: SceneLayoutSettings | null;
+	onSelectedLayoutSettingsChange?: (layout: SceneLayoutSettings) => void;
+	onLayoutDelete?: (id: string) => void;
 	onUploadWebcam?: () => void;
 	onClearWebcam?: () => void;
 	padding?: Padding;
@@ -1251,6 +1357,12 @@ export function SettingsPanel({
 	webcamPreviewCurrentTime = 0,
 	webcamPreviewPlaying = false,
 	onWebcamChange,
+	layout,
+	onLayoutChange,
+	selectedLayoutId = null,
+	selectedLayoutSettings = null,
+	onSelectedLayoutSettingsChange,
+	onLayoutDelete,
 	onUploadWebcam,
 	onClearWebcam,
 	padding = DEFAULT_PADDING,
@@ -1939,6 +2051,11 @@ export function SettingsPanel({
 	const updateWebcam = (patch: Partial<WebcamOverlaySettings>) => {
 		if (!webcam || !onWebcamChange) return;
 		onWebcamChange({ ...webcam, ...patch });
+	};
+
+	const updateLayout = (patch: Partial<SceneLayoutSettings>) => {
+		if (!onLayoutChange) return;
+		onLayoutChange({ ...(layout ?? DEFAULT_SCENE_LAYOUT), ...patch });
 	};
 
 	const applyWebcamPositionPreset = (preset: WebcamPositionPreset) => {
@@ -3266,8 +3383,23 @@ export function SettingsPanel({
 			</div>
 		);
 
+		const isPortraitCanvas = getAspectRatioValue(aspectRatio) < 1;
+		const currentLayout = layout ?? DEFAULT_SCENE_LAYOUT;
+
+		const layoutSectionContent = isPortraitCanvas ? (
+			<section className="flex flex-col gap-2">
+				<SectionLabel>{tSettings("sections.layout", "Layout")}</SectionLabel>
+				<SceneLayoutControls
+					value={currentLayout}
+					onChange={updateLayout}
+					tSettings={tSettings}
+				/>
+			</section>
+		) : null;
+
 		const sceneSectionContent = (
 			<div className="space-y-4">
+				{layoutSectionContent}
 				{backgroundSettingsContent}
 				{frameSectionContent}
 				{cropSectionContent}
@@ -3410,6 +3542,47 @@ export function SettingsPanel({
 					</Button>
 				)}
 				{renderExtensionPanelsForSections("zoom", "appearance", "frame", "crop")}
+			</section>
+		);
+
+		const layoutItemSectionContent = (
+			<section className="flex flex-col gap-2">
+				<SectionLabel>{tSettings("sections.layout", "Layout")}</SectionLabel>
+				{selectedLayoutId && selectedLayoutSettings ? (
+					<SceneLayoutControls
+						value={selectedLayoutSettings}
+						onChange={(patch) =>
+							onSelectedLayoutSettingsChange?.({
+								...selectedLayoutSettings,
+								...patch,
+							})
+						}
+						tSettings={tSettings}
+					/>
+				) : (
+					<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-6 text-center">
+						<p className="text-[11px] text-muted-foreground">
+							{tSettings(
+								"layout.selectOnTimeline",
+								"Select a layout region on the timeline to edit it.",
+							)}
+						</p>
+					</div>
+				)}
+				{selectedLayoutId && (
+					<Button
+						onClick={() => {
+							if (selectedLayoutId && onLayoutDelete)
+								onLayoutDelete(selectedLayoutId);
+						}}
+						variant="destructive"
+						size="sm"
+						className="mt-1 h-8 w-full gap-2 border border-red-500/20 bg-red-500/10 text-xs text-red-400 transition-all hover:border-red-500/30 hover:bg-red-500/20"
+					>
+						<Trash2 className="h-3 w-3" />
+						{tSettings("layout.deleteLayout", "Delete Layout")}
+					</Button>
+				)}
 			</section>
 		);
 
@@ -3645,6 +3818,8 @@ export function SettingsPanel({
 				return clipSectionContent;
 			case "audio":
 				return audioSectionContent;
+			case "layout":
+				return layoutItemSectionContent;
 			case "frame":
 				return sceneSectionContent;
 			case "crop":
@@ -4237,6 +4412,7 @@ export function SettingsPanel({
 						if (activeEffectSection === "clip" && selectedClipId) return false;
 						if (activeEffectSection === "zoom" && selectedZoomId) return false;
 						if (activeEffectSection === "audio" && selectedAudioId) return false;
+						if (activeEffectSection === "layout" && selectedLayoutId) return false;
 						if (selectedAnnotationId) return false; // Annotation editor handles its own but let's see
 						return true;
 					})() && "hidden",

@@ -1,6 +1,6 @@
 import type { Span } from "dnd-timeline";
 import type { ShortcutBinding } from "@/lib/shortcuts";
-import type { ZoomMode } from "../../types";
+import type { SceneLayoutMode, ZoomMode } from "../../types";
 
 export interface TimelineRegionSpan {
 	id: string;
@@ -41,7 +41,8 @@ export interface TimelineRenderItem {
 	speedValue?: number;
 	showSourceAudio?: boolean;
 	muted?: boolean;
-	variant: "zoom" | "trim" | "clip" | "annotation" | "speed" | "audio" | "caption";
+	layoutMode?: SceneLayoutMode;
+	variant: "zoom" | "trim" | "clip" | "annotation" | "speed" | "audio" | "caption" | "layout";
 }
 
 export interface AudioPeaksData {

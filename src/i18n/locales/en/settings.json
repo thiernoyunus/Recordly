@@ -163,7 +163,19 @@
 		"cursor": "Cursor",
 		"webcam": "Webcam",
 		"frame": "Frame",
-		"crop": "Crop"
+		"crop": "Crop",
+		"layout": "Layout"
+	},
+	"layout": {
+		"modeDefault": "Default",
+		"modeSplit": "Split",
+		"modeCamera": "Camera",
+		"modeScreen": "Screen",
+		"cameraSize": "Camera size",
+		"cameraOnTop": "Camera on top",
+		"selectOnTimeline": "Select a layout region on the timeline to edit it.",
+		"deleteLayout": "Delete Layout",
+		"resetFraming": "Reset framing"
 	},
 	"captions": {
 		"selectOnTimeline": "Select a caption on the timeline to edit it.",

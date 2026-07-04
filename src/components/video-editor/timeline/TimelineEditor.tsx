@@ -14,6 +14,7 @@ import type {
 	CaptionCue,
 	ClipRegion,
 	CursorTelemetryPoint,
+	LayoutRegion,
 	SpeedRegion,
 	TrimRegion,
 	ZoomFocus,
@@ -77,6 +78,13 @@ export interface TimelineEditorProps {
 	captionQuickAddEnabled?: boolean;
 	selectedCaptionId?: string | null;
 	onSelectCaption?: (id: string | null) => void;
+	layoutRegions?: LayoutRegion[];
+	onLayoutAdded?: (span: Span) => void;
+	onLayoutSpanChange?: (id: string, span: Span) => void;
+	onLayoutDelete?: (id: string) => void;
+	selectedLayoutId?: string | null;
+	onSelectLayout?: (id: string | null) => void;
+	showLayoutTrack?: boolean;
 	videoPath?: string | null;
 	videoSourcePath?: string | null;
 	cursorTelemetrySourcePath?: string | null;
@@ -108,6 +116,7 @@ export interface TimelineEditorHandle {
 	splitClip: () => void;
 	addAnnotation: (trackIndex?: number) => void;
 	addAudio: (trackIndex?: number) => Promise<void>;
+	addLayout: () => void;
 	keyframes: { id: string; time: number }[];
 }
 
@@ -159,6 +168,13 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			captionQuickAddEnabled = true,
 			selectedCaptionId,
 			onSelectCaption,
+			layoutRegions = [],
+			onLayoutAdded,
+			onLayoutSpanChange,
+			onLayoutDelete,
+			selectedLayoutId,
+			onSelectLayout,
+			showLayoutTrack = false,
 			videoPath,
 			videoSourcePath,
 			cursorTelemetrySourcePath,
@@ -334,6 +350,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			handleSelectAnnotation,
 			handleSelectAudio,
 			handleSelectCaption,
+			handleSelectLayout,
 			hasOverlap,
 			timelineItems,
 			allRegionSpans,
@@ -389,6 +406,12 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onCaptionAdded,
 			selectedCaptionId,
 			onSelectCaption,
+			layoutRegions,
+			onLayoutAdded,
+			onLayoutSpanChange,
+			onLayoutDelete,
+			selectedLayoutId,
+			onSelectLayout,
 			isMac,
 			keyShortcuts,
 			isTimelineFocusedRef,
@@ -488,11 +511,14 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 							onSelectAnnotation={handleSelectAnnotation}
 							onSelectAudio={handleSelectAudio}
 							onSelectCaption={handleSelectCaption}
+							onSelectLayout={handleSelectLayout}
 							selectedZoomId={selectedZoomId}
 							selectedClipId={selectedClipId}
 							selectedAnnotationId={selectedAnnotationId}
 							selectedAudioId={selectedAudioId}
 							selectedCaptionId={selectedCaptionId}
+							selectedLayoutId={selectedLayoutId}
+							showLayoutTrack={showLayoutTrack || layoutRegions.length > 0}
 							selectAllBlocksActive={selectAllBlocksActive}
 							onClearBlockSelection={clearSelectedBlocks}
 							keyframes={keyframes}

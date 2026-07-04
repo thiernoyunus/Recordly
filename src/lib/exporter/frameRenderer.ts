@@ -9,7 +9,9 @@ import type {
 	CursorClickEffectStyle,
 	CursorStyle,
 	CursorTelemetryPoint,
+	LayoutRegion,
 	Padding,
+	SceneLayoutSettings,
 	SpeedRegion,
 	WebcamOverlaySettings,
 	ZoomMotionBlurTuning,
@@ -19,6 +21,8 @@ import type {
 import {
 	BASE_PREVIEW_HEIGHT,
 	BASE_PREVIEW_WIDTH,
+	DEFAULT_SCENE_LAYOUT,
+	getLayoutAtTime,
 	ZOOM_DEPTH_SCALES,
 } from "@/components/video-editor/types";
 import { DEFAULT_FOCUS } from "@/components/video-editor/videoPlayback/constants";
@@ -33,7 +37,13 @@ import {
 	PixiCursorOverlay,
 	preloadCursorAssets,
 } from "@/components/video-editor/videoPlayback/cursorRenderer";
-import { computePaddedLayout } from "@/components/video-editor/videoPlayback/layoutUtils";
+import {
+	computePaddedLayout,
+	computeSceneBandRects,
+	getSceneLayoutScreenFocus,
+	type LayoutRect,
+	resolveSceneLayout,
+} from "@/components/video-editor/videoPlayback/layoutUtils";
 import {
 	createSpringState,
 	getZoomSpringConfig,
@@ -109,6 +119,8 @@ interface FrameRenderConfig {
 	cropRegion: CropRegion;
 	webcam?: WebcamOverlaySettings;
 	webcamUrl?: string | null;
+	layout?: SceneLayoutSettings;
+	layoutRegions?: LayoutRegion[];
 	videoWidth: number;
 	videoHeight: number;
 	annotationRegions?: AnnotationRegion[];
@@ -221,6 +233,8 @@ interface LayoutCache {
 		height: number;
 		sourceCrop: CropRegion;
 	};
+	screenRect: LayoutRect | null;
+	cameraRect: LayoutRect | null;
 }
 
 interface RenderSnapshot {
@@ -1497,7 +1511,12 @@ export class FrameRenderer {
 		}
 
 		// Apply layout
-		this.updateLayout();
+		const activeLayout = getLayoutAtTime(
+			this.config.layoutRegions,
+			this.config.layout ?? DEFAULT_SCENE_LAYOUT,
+			this.currentVideoTime * 1000,
+		);
+		this.updateLayout(activeLayout);
 		const layoutCache = this.layoutCache;
 		if (!layoutCache) {
 			return;
@@ -1701,6 +1720,7 @@ export class FrameRenderer {
 			},
 			motionBlurState: this.motionBlurState,
 			frameTimeMs: timeMs,
+			anchor: this.getScreenZoomAnchor(layoutCache),
 		});
 
 		// Render the PixiJS stage to its canvas (video only, transparent background)
@@ -1904,7 +1924,7 @@ export class FrameRenderer {
 		}
 	}
 
-	private updateLayout(): void {
+	private updateLayout(activeLayout: SceneLayoutSettings): void {
 		if (!this.app || !this.videoSprite || !this.maskGraphics || !this.videoContainer) return;
 
 		const {
@@ -1916,6 +1936,11 @@ export class FrameRenderer {
 			videoWidth,
 			videoHeight,
 		} = this.config;
+		const resolvedLayout = resolveSceneLayout(
+			activeLayout,
+			Boolean(this.config.webcam?.enabled && this.config.webcamUrl),
+		);
+		const bands = computeSceneBandRects(resolvedLayout, width, height);
 
 		const layout = computePaddedLayout({
 			width,
@@ -1925,10 +1950,15 @@ export class FrameRenderer {
 			cropRegion,
 			videoWidth,
 			videoHeight,
+			contentRect: bands.screenRect ?? undefined,
+			fitMode: bands.screenRect ? "cover" : undefined,
+			contentFocus: bands.screenRect ? getSceneLayoutScreenFocus(resolvedLayout) : undefined,
 		});
 
 		this.videoSprite.scale.set(layout.scale);
 		this.videoSprite.position.set(layout.spriteX, layout.spriteY);
+		this.videoSprite.visible = resolvedLayout.mode === "default" || Boolean(bands.screenRect);
+		this.maskGraphics.visible = this.videoSprite.visible;
 
 		this.videoContainer.position.set(0, 0);
 
@@ -1956,6 +1986,8 @@ export class FrameRenderer {
 				width: videoWidth * cropRegion.width,
 				height: videoHeight * cropRegion.height,
 			},
+			screenRect: bands.screenRect,
+			cameraRect: bands.cameraRect,
 			baseScale: layout.scale,
 			baseOffset: { x: layout.spriteX, y: layout.spriteY },
 			maskRect: {
@@ -1966,6 +1998,18 @@ export class FrameRenderer {
 				sourceCrop: cropRegion,
 			},
 		};
+	}
+
+	private getScreenZoomAnchor(
+		layoutCache = this.layoutCache,
+	): { x: number; y: number } | undefined {
+		const screenRect = layoutCache?.screenRect;
+		return screenRect
+			? {
+					x: screenRect.x + screenRect.width / 2,
+					y: screenRect.y + screenRect.height / 2,
+				}
+			: undefined;
 	}
 
 	private updateAnimationState(timeMs: number): number {
@@ -2031,6 +2075,7 @@ export class FrameRenderer {
 			zoomProgress: state.progress,
 			focusX: state.focusX,
 			focusY: state.focusY,
+			anchor: this.getScreenZoomAnchor(),
 		});
 
 		// Spring-driven zoom animation for export — use content time, not wall-clock,
@@ -2145,6 +2190,7 @@ export class FrameRenderer {
 			},
 			motionBlurState: this.motionBlurState,
 			frameTimeMs: timeMs,
+			anchor: this.getScreenZoomAnchor(layoutCache),
 		});
 
 		this.app.renderer.render(this.app.stage);
@@ -2458,6 +2504,10 @@ export class FrameRenderer {
 				: "videoHeight" in webcamFrameSource
 					? webcamFrameSource.videoHeight
 					: webcamFrameSource.height) || sourceWidth;
+		const cameraRect = this.layoutCache?.cameraRect ?? null;
+		if (this.config.layout?.mode && this.config.layout.mode !== "default" && !cameraRect) {
+			return;
+		}
 		const margin = webcam.margin ?? 24;
 		const widthPercent = webcam.width ?? webcam.size ?? 50;
 		const heightPercent = getCropMatchedWebcamHeightPercent(
@@ -2467,27 +2517,31 @@ export class FrameRenderer {
 			sourceHeight,
 			webcam.cropRegion,
 		);
-		const dimensions = getWebcamOverlayDimensionsPx({
-			containerWidth: width,
-			containerHeight: height,
-			widthPercent,
-			heightPercent,
-			margin,
-			zoomScale: this.animationState.appliedScale || 1,
-			reactToZoom: webcam.reactToZoom ?? true,
-		});
-		const { x, y } = getWebcamOverlayPosition({
-			containerWidth: width,
-			containerHeight: height,
-			width: dimensions.width,
-			height: dimensions.height,
-			margin,
-			positionPreset: webcam.positionPreset ?? webcam.corner,
-			positionX: webcam.positionX ?? 1,
-			positionY: webcam.positionY ?? 1,
-			legacyCorner: webcam.corner,
-		});
-		const radius = Math.max(0, webcam.cornerRadius ?? 18);
+		const dimensions =
+			cameraRect ??
+			getWebcamOverlayDimensionsPx({
+				containerWidth: width,
+				containerHeight: height,
+				widthPercent,
+				heightPercent,
+				margin,
+				zoomScale: this.animationState.appliedScale || 1,
+				reactToZoom: webcam.reactToZoom ?? true,
+			});
+		const position = cameraRect
+			? { x: cameraRect.x, y: cameraRect.y }
+			: getWebcamOverlayPosition({
+					containerWidth: width,
+					containerHeight: height,
+					width: dimensions.width,
+					height: dimensions.height,
+					margin,
+					positionPreset: webcam.positionPreset ?? webcam.corner,
+					positionX: webcam.positionX ?? 1,
+					positionY: webcam.positionY ?? 1,
+					legacyCorner: webcam.corner,
+				});
+		const radius = cameraRect ? 0 : Math.max(0, webcam.cornerRadius ?? 18);
 		const bubbleWidth = Math.max(1, Math.ceil(dimensions.width));
 		const bubbleHeight = Math.max(1, Math.ceil(dimensions.height));
 		if (bubbleCanvas.width !== bubbleWidth || bubbleCanvas.height !== bubbleHeight) {
@@ -2548,17 +2602,23 @@ export class FrameRenderer {
 		}
 		bubbleCtx.restore();
 
-		if ((webcam.shadow ?? 0) > 0) {
+		if (!cameraRect && (webcam.shadow ?? 0) > 0) {
 			const shadow = Math.max(0, Math.min(1, webcam.shadow));
 			const shadowSize = Math.min(dimensions.width, dimensions.height);
 			ctx.save();
 			ctx.filter = `drop-shadow(0 ${Math.round(shadowSize * 0.06)}px ${Math.round(shadowSize * 0.22)}px rgba(0,0,0,${shadow}))`;
-			ctx.drawImage(bubbleCanvas, x, y, dimensions.width, dimensions.height);
+			ctx.drawImage(
+				bubbleCanvas,
+				position.x,
+				position.y,
+				dimensions.width,
+				dimensions.height,
+			);
 			ctx.restore();
 			return;
 		}
 
-		ctx.drawImage(bubbleCanvas, x, y, dimensions.width, dimensions.height);
+		ctx.drawImage(bubbleCanvas, position.x, position.y, dimensions.width, dimensions.height);
 	}
 
 	private closeWebcamDecodedFrame(): void {

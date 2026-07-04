@@ -7,6 +7,7 @@ import type {
 	CaptionCue,
 	ClipRegion,
 	CursorTelemetryPoint,
+	LayoutRegion,
 	SpeedRegion,
 	TrimRegion,
 	ZoomFocus,
@@ -16,6 +17,7 @@ import type { TimelineShortcutBindings } from "../core/timelineTypes";
 import type { TimelineEditorHandle } from "../TimelineEditor";
 import { useTimelineAudioActions } from "./actions/useTimelineAudioActions";
 import { useTimelineCaptionActions } from "./actions/useTimelineCaptionActions";
+import { useTimelineLayoutActions } from "./actions/useTimelineLayoutActions";
 import { useTimelineZoomActions } from "./actions/useTimelineZoomActions";
 import { useTimelineDndBindings } from "./useTimelineDndBindings";
 import { useTimelineKeyboardShortcuts } from "./useTimelineKeyboardShortcuts";
@@ -67,6 +69,12 @@ interface UseTimelineEditorRuntimeParams {
 	onCaptionAdded?: (span: Span) => void;
 	selectedCaptionId?: string | null;
 	onSelectCaption?: (id: string | null) => void;
+	layoutRegions: LayoutRegion[];
+	onLayoutAdded?: (span: Span) => void;
+	onLayoutSpanChange?: (id: string, span: Span) => void;
+	onLayoutDelete?: (id: string) => void;
+	selectedLayoutId?: string | null;
+	onSelectLayout?: (id: string | null) => void;
 	isMac: boolean;
 	keyShortcuts: TimelineShortcutBindings;
 	isTimelineFocusedRef: RefObject<boolean>;
@@ -117,6 +125,12 @@ export function useTimelineEditorRuntime({
 	onCaptionAdded,
 	selectedCaptionId,
 	onSelectCaption,
+	layoutRegions,
+	onLayoutAdded,
+	onLayoutSpanChange,
+	onLayoutDelete,
+	selectedLayoutId,
+	onSelectLayout,
 	isMac,
 	keyShortcuts,
 	isTimelineFocusedRef,
@@ -137,12 +151,14 @@ export function useTimelineEditorRuntime({
 		deleteSelectedAnnotation,
 		deleteSelectedAudio,
 		deleteSelectedCaption,
+		deleteSelectedLayout,
 		clearSelectedBlocks,
 		handleSelectZoom,
 		handleSelectClip,
 		handleSelectAnnotation,
 		handleSelectAudio,
 		handleSelectCaption,
+		handleSelectLayout,
 		cycleAnnotationsAtCurrentTime,
 	} = useTimelineSelection({
 		totalMs,
@@ -151,21 +167,25 @@ export function useTimelineEditorRuntime({
 		clipRegions,
 		annotationRegions,
 		audioRegions,
+		layoutRegions,
 		selectedZoomId,
 		selectedClipId,
 		selectedAnnotationId,
 		selectedAudioId,
 		selectedCaptionId,
+		selectedLayoutId,
 		onZoomDelete,
 		onClipDelete,
 		onAnnotationDelete,
 		onAudioDelete,
 		onCaptionDelete,
+		onLayoutDelete,
 		onSelectZoom,
 		onSelectClip,
 		onSelectAnnotation,
 		onSelectAudio,
 		onSelectCaption,
+		onSelectLayout,
 	});
 
 	useTimelineNormalization({
@@ -175,10 +195,12 @@ export function useTimelineEditorRuntime({
 		trimRegions,
 		speedRegions,
 		audioRegions,
+		layoutRegions,
 		onZoomSpanChange,
 		onTrimSpanChange,
 		onSpeedSpanChange,
 		onAudioSpanChange,
+		onLayoutSpanChange,
 	});
 
 	const {
@@ -195,6 +217,7 @@ export function useTimelineEditorRuntime({
 		speedRegions,
 		audioRegions,
 		captionCues,
+		layoutRegions,
 		onZoomSpanChange,
 		onTrimSpanChange,
 		onClipSpanChange,
@@ -202,6 +225,7 @@ export function useTimelineEditorRuntime({
 		onSpeedSpanChange,
 		onAudioSpanChange,
 		onCaptionSpanChange,
+		onLayoutSpanChange,
 	});
 
 	const {
@@ -227,6 +251,12 @@ export function useTimelineEditorRuntime({
 			captionRegions: captionCues,
 			onCaptionAdded,
 		});
+
+	const { canPlaceLayoutAtMs, addLayoutAtMs, handleAddLayout } = useTimelineLayoutActions({
+		timeline: { videoDuration, totalMs, currentTimeMs },
+		regions: { layout: layoutRegions, clip: clipRegions },
+		onLayoutAdded,
+	});
 
 	const handleSplitClip = useCallback(() => {
 		if (!videoDuration || videoDuration === 0 || totalMs === 0 || !onClipSplit) {
@@ -273,6 +303,7 @@ export function useTimelineEditorRuntime({
 		selectedAnnotationId,
 		selectedAudioId,
 		selectedCaptionId,
+		selectedLayoutId,
 		selectAllBlocksActive,
 		addKeyframe,
 		handleAddZoom,
@@ -284,6 +315,7 @@ export function useTimelineEditorRuntime({
 		deleteSelectedAnnotation,
 		deleteSelectedAudio,
 		deleteSelectedCaption,
+		deleteSelectedLayout,
 		cycleAnnotationsAtCurrentTime,
 	});
 
@@ -295,6 +327,7 @@ export function useTimelineEditorRuntime({
 			splitClip: handleSplitClip,
 			addAnnotation: handleAddAnnotation,
 			addAudio: handleAddAudio,
+			addLayout: handleAddLayout,
 			keyframes,
 		}),
 		[
@@ -303,6 +336,7 @@ export function useTimelineEditorRuntime({
 			handleAddZoom,
 			handleSuggestZooms,
 			handleSplitClip,
+			handleAddLayout,
 			keyframes,
 		],
 	);
@@ -320,6 +354,7 @@ export function useTimelineEditorRuntime({
 		handleSelectAnnotation,
 		handleSelectAudio,
 		handleSelectCaption,
+		handleSelectLayout,
 		hasOverlap,
 		timelineItems,
 		allRegionSpans,
@@ -330,10 +365,13 @@ export function useTimelineEditorRuntime({
 		canPlaceCaptionAtMs,
 		addCaptionAtMs,
 		resolveCaptionSpanAtMs,
+		canPlaceLayoutAtMs,
+		addLayoutAtMs,
 		handleAddZoom,
 		handleSuggestZooms,
 		handleSplitClip,
 		handleAddAudio,
 		handleAddAnnotation,
+		handleAddLayout,
 	};
 }

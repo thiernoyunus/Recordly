@@ -112,6 +112,7 @@ export type EditorEffectSection =
 	| "extensions"
 	| "clip"
 	| "audio"
+	| "layout"
 	| `ext:${string}`;
 
 export type ZoomTransitionEasing = "recordly" | "glide" | "smooth" | "snappy" | "linear";
@@ -208,6 +209,42 @@ export const DEFAULT_WEBCAM_OVERLAY: WebcamOverlaySettings = {
 	shadow: DEFAULT_WEBCAM_SHADOW,
 	margin: DEFAULT_WEBCAM_MARGIN,
 };
+
+export type SceneLayoutMode = "default" | "split" | "camera" | "screen";
+export interface SceneLayoutSettings {
+	mode: SceneLayoutMode;
+	/** Camera band height as a fraction of stage height (split mode) */
+	splitRatio: number;
+	cameraOnTop: boolean;
+	/** 0-1 horizontal/vertical focus of the screen band's cover crop; 0.5 = centered */
+	screenFocusX?: number;
+	screenFocusY?: number;
+}
+export const SCENE_LAYOUT_SPLIT_RATIO_MIN = 0.2;
+export const SCENE_LAYOUT_SPLIT_RATIO_MAX = 0.8;
+export const DEFAULT_SCENE_LAYOUT: SceneLayoutSettings = {
+	mode: "default",
+	splitRatio: 0.4,
+	cameraOnTop: false,
+};
+
+export interface LayoutRegion {
+	id: string;
+	startMs: number;
+	endMs: number;
+	layout: SceneLayoutSettings;
+}
+
+export function getLayoutAtTime(
+	regions: LayoutRegion[] | undefined,
+	baseLayout: SceneLayoutSettings,
+	timeMs: number,
+): SceneLayoutSettings {
+	return (
+		regions?.find((region) => timeMs >= region.startMs && timeMs < region.endMs)?.layout ??
+		baseLayout
+	);
+}
 
 export interface TrimRegion {
 	id: string;

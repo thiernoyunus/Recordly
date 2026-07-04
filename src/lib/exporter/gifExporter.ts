@@ -3,11 +3,13 @@ import type {
 	AnnotationRegion,
 	AutoCaptionSettings,
 	CaptionCue,
-	CursorClickEffectStyle,
 	CropRegion,
+	CursorClickEffectStyle,
 	CursorStyle,
 	CursorTelemetryPoint,
+	LayoutRegion,
 	Padding,
+	SceneLayoutSettings,
 	SpeedRegion,
 	TrimRegion,
 	WebcamOverlaySettings,
@@ -63,6 +65,8 @@ interface GifExporterConfig {
 	cropRegion: CropRegion;
 	webcam?: WebcamOverlaySettings;
 	webcamUrl?: string | null;
+	layout?: SceneLayoutSettings;
+	layoutRegions?: LayoutRegion[];
 	annotationRegions?: AnnotationRegion[];
 	autoCaptions?: CaptionCue[];
 	autoCaptionSettings?: AutoCaptionSettings;
@@ -165,6 +169,8 @@ export function buildGifFrameRendererConfig(
 		cropRegion: config.cropRegion,
 		webcam: config.webcam,
 		webcamUrl: config.webcamUrl,
+		layout: config.layout,
+		layoutRegions: config.layoutRegions,
 		videoWidth: videoInfo.width,
 		videoHeight: videoInfo.height,
 		annotationRegions: config.annotationRegions,

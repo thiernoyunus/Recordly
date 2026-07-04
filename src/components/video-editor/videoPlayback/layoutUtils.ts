@@ -1,6 +1,14 @@
 import { Application, Graphics, Sprite } from "pixi.js";
 import { drawSquircleOnGraphics } from "@/lib/geometry/squircle";
-import { ADVANCED_VERTICAL_PADDING_MAX, type CropRegion, type Padding } from "../types";
+import {
+	ADVANCED_VERTICAL_PADDING_MAX,
+	type CropRegion,
+	DEFAULT_SCENE_LAYOUT,
+	type Padding,
+	SCENE_LAYOUT_SPLIT_RATIO_MAX,
+	SCENE_LAYOUT_SPLIT_RATIO_MIN,
+	type SceneLayoutSettings,
+} from "../types";
 
 export const PADDING_SCALE_FACTOR = 0.2;
 export const BASE_PREVIEW_WIDTH = 1920;
@@ -20,6 +28,100 @@ export function isZeroPadding(padding: Padding | number): boolean {
 		return padding === 0;
 	}
 	return padding.top === 0 && padding.bottom === 0 && padding.left === 0 && padding.right === 0;
+}
+
+export interface LayoutRect {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+}
+
+/**
+ * Aspect ratio (w/h) of the camera band for a scene layout, or null when the
+ * layout has no camera band (default/screen). Used to shape the webcam's
+ * inner cover-crop to the band instead of the bubble sliders.
+ */
+export function getSceneLayoutCameraAspect(
+	layout: SceneLayoutSettings,
+	stageAspect: number,
+): number | null {
+	if (layout.mode === "camera") {
+		return stageAspect;
+	}
+	if (layout.mode === "split") {
+		const splitRatio = Math.min(
+			SCENE_LAYOUT_SPLIT_RATIO_MAX,
+			Math.max(SCENE_LAYOUT_SPLIT_RATIO_MIN, layout.splitRatio),
+		);
+		return stageAspect / splitRatio;
+	}
+	return null;
+}
+
+export function computeSceneBandRects(
+	layout: SceneLayoutSettings,
+	width: number,
+	height: number,
+): { screenRect: LayoutRect | null; cameraRect: LayoutRect | null } {
+	const fullStageRect = { x: 0, y: 0, width, height };
+
+	if (layout.mode === "camera") {
+		return { screenRect: null, cameraRect: fullStageRect };
+	}
+
+	if (layout.mode === "screen") {
+		return { screenRect: fullStageRect, cameraRect: null };
+	}
+
+	if (layout.mode !== "split") {
+		return { screenRect: null, cameraRect: null };
+	}
+
+	const splitRatio = Math.min(
+		SCENE_LAYOUT_SPLIT_RATIO_MAX,
+		Math.max(SCENE_LAYOUT_SPLIT_RATIO_MIN, layout.splitRatio),
+	);
+	const bandHeight = splitRatio * height;
+	const screenHeight = height - bandHeight;
+
+	if (layout.cameraOnTop) {
+		return {
+			cameraRect: { x: 0, y: 0, width, height: bandHeight },
+			screenRect: { x: 0, y: bandHeight, width, height: screenHeight },
+		};
+	}
+
+	return {
+		screenRect: { x: 0, y: 0, width, height: screenHeight },
+		cameraRect: { x: 0, y: screenHeight, width, height: bandHeight },
+	};
+}
+
+export function resolveSceneLayout(
+	layout: SceneLayoutSettings | undefined,
+	webcamAvailable: boolean,
+): SceneLayoutSettings {
+	const resolved = layout ?? DEFAULT_SCENE_LAYOUT;
+	if ((resolved.mode === "split" || resolved.mode === "camera") && !webcamAvailable) {
+		return { ...resolved, mode: "screen" };
+	}
+	return resolved;
+}
+
+const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
+
+export function getSceneLayoutScreenFocus(layout: SceneLayoutSettings): { x: number; y: number } {
+	return {
+		x:
+			typeof layout.screenFocusX === "number" && Number.isFinite(layout.screenFocusX)
+				? clamp01(layout.screenFocusX)
+				: 0.5,
+		y:
+			typeof layout.screenFocusY === "number" && Number.isFinite(layout.screenFocusY)
+				? clamp01(layout.screenFocusY)
+				: 0.5,
+	};
 }
 
 export interface PaddedLayoutResult {
@@ -46,8 +148,75 @@ export function computePaddedLayout(params: {
 	cropRegion: CropRegion;
 	videoWidth: number;
 	videoHeight: number;
+	contentRect?: LayoutRect;
+	fitMode?: "contain" | "cover";
+	contentFocus?: { x: number; y: number };
 }): PaddedLayoutResult {
-	const { width, height, padding, frameInsets, cropRegion, videoWidth, videoHeight } = params;
+	const {
+		width,
+		height,
+		padding,
+		frameInsets,
+		cropRegion,
+		videoWidth,
+		videoHeight,
+		contentRect,
+		fitMode = "contain",
+		contentFocus,
+	} = params;
+
+	if (contentRect) {
+		// Band layouts ignore padding and device frame insets in v1.
+		const crop = cropRegion;
+		const croppedVideoWidth = videoWidth * crop.width;
+		const croppedVideoHeight = videoHeight * crop.height;
+		const scaleX = croppedVideoWidth > 0 ? contentRect.width / croppedVideoWidth : 0;
+		const scaleY = croppedVideoHeight > 0 ? contentRect.height / croppedVideoHeight : 0;
+		const scale = fitMode === "cover" ? Math.max(scaleX, scaleY) : Math.min(scaleX, scaleY);
+		const fullVideoDisplayWidth = videoWidth * scale;
+		const fullVideoDisplayHeight = videoHeight * scale;
+		const croppedDisplayWidth =
+			fitMode === "cover" ? contentRect.width : croppedVideoWidth * scale;
+		const croppedDisplayHeight =
+			fitMode === "cover" ? contentRect.height : croppedVideoHeight * scale;
+		const scaledW = croppedVideoWidth * scale;
+		const scaledH = croppedVideoHeight * scale;
+		const focus = contentFocus
+			? { x: clamp01(contentFocus.x), y: clamp01(contentFocus.y) }
+			: { x: 0.5, y: 0.5 };
+		const contentX =
+			fitMode === "cover" && scaledW > contentRect.width
+				? contentRect.x - (scaledW - contentRect.width) * focus.x
+				: contentRect.x + (contentRect.width - scaledW) / 2;
+		const contentY =
+			fitMode === "cover" && scaledH > contentRect.height
+				? contentRect.y - (scaledH - contentRect.height) * focus.y
+				: contentRect.y + (contentRect.height - scaledH) / 2;
+		const spriteX = contentX - crop.x * fullVideoDisplayWidth;
+		const spriteY = contentY - crop.y * fullVideoDisplayHeight;
+
+		return {
+			scale,
+			centerOffsetX:
+				fitMode === "cover"
+					? contentRect.x
+					: contentRect.x + (contentRect.width - croppedDisplayWidth) / 2,
+			centerOffsetY:
+				fitMode === "cover"
+					? contentRect.y
+					: contentRect.y + (contentRect.height - croppedDisplayHeight) / 2,
+			spriteX,
+			spriteY,
+			fullFrameDisplayW: croppedVideoWidth * scale,
+			fullFrameDisplayH: croppedVideoHeight * scale,
+			fullVideoDisplayWidth,
+			fullVideoDisplayHeight,
+			croppedDisplayWidth,
+			croppedDisplayHeight,
+			cropStartX: crop.x * videoWidth,
+			cropStartY: crop.y * videoHeight,
+		};
+	}
 
 	// Apply asymmetrical padding
 	const p =
@@ -153,6 +322,9 @@ interface LayoutParams {
 	padding?: Padding | number;
 	/** Screen insets from the active device frame, used to scale/center the full frame */
 	frameInsets?: { top: number; right: number; bottom: number; left: number } | null;
+	contentRect?: LayoutRect;
+	fitMode?: "contain" | "cover";
+	contentFocus?: { x: number; y: number };
 }
 
 interface LayoutResult {
@@ -160,6 +332,7 @@ interface LayoutResult {
 	videoSize: { width: number; height: number };
 	baseScale: number;
 	baseOffset: { x: number; y: number };
+	panRange: { x: number; y: number };
 	maskRect: {
 		x: number;
 		y: number;
@@ -182,6 +355,9 @@ export function layoutVideoContent(params: LayoutParams): LayoutResult | null {
 		borderRadius = 0,
 		padding = 0,
 		frameInsets,
+		contentRect,
+		fitMode,
+		contentFocus,
 	} = params;
 
 	const videoWidth = lockedVideoDimensions?.width || videoElement.videoWidth;
@@ -211,6 +387,9 @@ export function layoutVideoContent(params: LayoutParams): LayoutResult | null {
 		cropRegion: crop,
 		videoWidth,
 		videoHeight,
+		contentRect,
+		fitMode,
+		contentFocus,
 	});
 
 	videoSprite.scale.set(layout.scale);
@@ -231,6 +410,10 @@ export function layoutVideoContent(params: LayoutParams): LayoutResult | null {
 		videoSize: { width: videoWidth * crop.width, height: videoHeight * crop.height },
 		baseScale: layout.scale,
 		baseOffset: { x: layout.spriteX, y: layout.spriteY },
+		panRange: {
+			x: Math.max(0, layout.fullFrameDisplayW - layout.croppedDisplayWidth),
+			y: Math.max(0, layout.fullFrameDisplayH - layout.croppedDisplayHeight),
+		},
 		maskRect: {
 			x: layout.centerOffsetX,
 			y: layout.centerOffsetY,

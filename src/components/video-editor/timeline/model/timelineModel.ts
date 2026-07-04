@@ -4,9 +4,10 @@ import type {
 	AudioRegion,
 	CaptionCue,
 	ClipRegion,
+	LayoutRegion,
 	ZoomRegion,
 } from "../../types";
-import { CAPTION_ROW_ID, CLIP_ROW_ID, ZOOM_ROW_ID } from "../core/constants";
+import { CAPTION_ROW_ID, CLIP_ROW_ID, LAYOUT_ROW_ID, ZOOM_ROW_ID } from "../core/constants";
 import {
 	getAnnotationTrackIndex,
 	getAnnotationTrackRowId,
@@ -48,8 +49,16 @@ export function buildTimelineItems(params: {
 	annotationRegions: AnnotationRegion[];
 	audioRegions: AudioRegion[];
 	captionCues?: CaptionCue[];
+	layoutRegions?: LayoutRegion[];
 }): TimelineRenderItem[] {
-	const { zoomRegions, clipRegions, annotationRegions, audioRegions, captionCues = [] } = params;
+	const {
+		zoomRegions,
+		clipRegions,
+		annotationRegions,
+		audioRegions,
+		captionCues = [],
+		layoutRegions = [],
+	} = params;
 	const zooms: TimelineRenderItem[] = zoomRegions.map((region, index) => ({
 		id: region.id,
 		rowId: ZOOM_ROW_ID,
@@ -58,6 +67,15 @@ export function buildTimelineItems(params: {
 		zoomDepth: region.depth,
 		zoomMode: region.mode ?? "auto",
 		variant: "zoom",
+	}));
+
+	const layouts: TimelineRenderItem[] = layoutRegions.map((region) => ({
+		id: region.id,
+		rowId: LAYOUT_ROW_ID,
+		span: { start: region.startMs, end: region.endMs },
+		label: region.layout.mode,
+		layoutMode: region.layout.mode,
+		variant: "layout",
 	}));
 
 	const clips: TimelineRenderItem[] = clipRegions.map((region, index) => {
@@ -106,20 +124,27 @@ export function buildTimelineItems(params: {
 		variant: "caption",
 	}));
 
-	return [...zooms, ...clips, ...annotations, ...audios, ...captions];
+	return [...zooms, ...layouts, ...clips, ...annotations, ...audios, ...captions];
 }
 
 export function buildAllRegionSpans(params: {
 	zoomRegions: ZoomRegion[];
 	clipRegions: ClipRegion[];
 	audioRegions: AudioRegion[];
+	layoutRegions?: LayoutRegion[];
 }): TimelineRegionSpan[] {
-	const { zoomRegions, clipRegions, audioRegions } = params;
+	const { zoomRegions, clipRegions, audioRegions, layoutRegions = [] } = params;
 	const zooms = zoomRegions.map((r) => ({
 		id: r.id,
 		start: r.startMs,
 		end: r.endMs,
 		rowId: ZOOM_ROW_ID,
+	}));
+	const layouts = layoutRegions.map((r) => ({
+		id: r.id,
+		start: r.startMs,
+		end: r.endMs,
+		rowId: LAYOUT_ROW_ID,
 	}));
 	const clips = clipRegions.map((r) => ({
 		id: r.id,
@@ -133,7 +158,7 @@ export function buildAllRegionSpans(params: {
 		end: r.endMs,
 		rowId: getAudioTrackRowId(r.trackIndex ?? 0),
 	}));
-	return [...zooms, ...clips, ...audios];
+	return [...zooms, ...layouts, ...clips, ...audios];
 }
 
 export function resolveDropRowId(

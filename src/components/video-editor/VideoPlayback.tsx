@@ -127,7 +127,11 @@ import {
 } from "@/lib/extensions/renderHooks";
 import { applyCanvasSceneTransform } from "@/lib/extensions/sceneTransform";
 import { getSquircleSvgPath } from "@/lib/geometry/squircle";
-import { type AspectRatio, formatAspectRatioForCSS } from "@/utils/aspectRatioUtils";
+import {
+	type AspectRatio,
+	formatAspectRatioForCSS,
+	getAspectRatioValue,
+} from "@/utils/aspectRatioUtils";
 import { AnnotationOverlay } from "./AnnotationOverlay";
 import {
 	DEFAULT_CONNECTED_ZOOM_DURATION_MS,
@@ -158,6 +162,9 @@ import {
 	DEFAULT_ZOOM_OUT_DURATION_MS,
 	DEFAULT_ZOOM_OUT_EASING,
 	getDefaultCaptionFontFamily,
+	getLayoutAtTime,
+	type LayoutRegion,
+	type SceneLayoutSettings,
 } from "./types";
 import {
 	type CursorFollowCameraState,
@@ -168,8 +175,11 @@ import {
 } from "./videoPlayback/cursorFollowCamera";
 import { clampFocusToStage as clampFocusToStageUtil } from "./videoPlayback/focusUtils";
 import {
+	computeSceneBandRects,
+	getSceneLayoutCameraAspect,
+	getSceneLayoutScreenFocus,
 	layoutVideoContent as layoutVideoContentUtil,
-	scalePreviewBorderRadius,
+	resolveSceneLayout,
 } from "./videoPlayback/layoutUtils";
 import { updateOverlayIndicator } from "./videoPlayback/overlayUtils";
 import { createVideoEventHandlers } from "./videoPlayback/videoEventHandlers";
@@ -353,8 +363,10 @@ interface VideoPlaybackProps {
 	wallpaper?: string;
 	zoomRegions: ZoomRegion[];
 	selectedZoomId: string | null;
+	selectedLayoutId?: string | null;
 	onSelectZoom: (id: string | null) => void;
 	onZoomFocusChange: (id: string, focus: ZoomFocus) => void;
+	onLayoutScreenFocusChange?: (regionId: string | null, focus: { x: number; y: number }) => void;
 	isPlaying: boolean;
 	showShadow?: boolean;
 	shadowIntensity?: number;
@@ -373,6 +385,8 @@ interface VideoPlaybackProps {
 	frame?: string | null;
 	cropRegion?: import("./types").CropRegion;
 	webcam?: WebcamOverlaySettings;
+	layout: SceneLayoutSettings;
+	layoutRegions?: LayoutRegion[];
 	webcamVideoPath?: string | null;
 	trimRegions?: TrimRegion[];
 	speedRegions?: SpeedRegion[];
@@ -425,6 +439,13 @@ export interface VideoPlaybackRef {
 	cancelCaptionEdit: () => void;
 }
 
+const areSceneLayoutsEqual = (a: SceneLayoutSettings, b: SceneLayoutSettings) =>
+	a.mode === b.mode &&
+	a.splitRatio === b.splitRatio &&
+	a.cameraOnTop === b.cameraOnTop &&
+	a.screenFocusX === b.screenFocusX &&
+	a.screenFocusY === b.screenFocusY;
+
 const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 	(
 		{
@@ -438,8 +459,10 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			wallpaper,
 			zoomRegions,
 			selectedZoomId,
+			selectedLayoutId = null,
 			onSelectZoom,
 			onZoomFocusChange,
+			onLayoutScreenFocusChange,
 			isPlaying,
 			showShadow,
 			shadowIntensity = 0,
@@ -458,6 +481,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			frame = null,
 			cropRegion,
 			webcam,
+			layout,
+			layoutRegions,
 			webcamVideoPath,
 			trimRegions = [],
 			speedRegions = [],
@@ -559,6 +584,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			width: number;
 			height: number;
 		} | null>(null);
+		const screenZoomAnchorRef = useRef<{ x: number; y: number } | null>(null);
 		const captionBoxRef = useRef<HTMLDivElement | null>(null);
 		const captionEditInputRef = useRef<HTMLTextAreaElement | null>(null);
 		const captionEditSessionRef = useRef<CaptionEditSession | null>(null);
@@ -567,9 +593,25 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		);
 		const currentTimeRef = useRef(0);
 		const zoomRegionsRef = useRef<ZoomRegion[]>([]);
+		const layoutRegionsRef = useRef<LayoutRegion[] | undefined>(layoutRegions);
+		const [activeLayoutForUi, setActiveLayoutForUi] = useState<SceneLayoutSettings>(layout);
+		const activeLayoutRef = useRef<SceneLayoutSettings>(layout);
 		const selectedZoomIdRef = useRef<string | null>(null);
+		const selectedLayoutIdRef = useRef<string | null>(null);
 		const animationStateRef = useRef<PlaybackAnimationState>(createPlaybackAnimationState());
 		const isDraggingFocusRef = useRef(false);
+		const isDraggingLayoutScreenRef = useRef(false);
+		const layoutScreenFocusOverrideRef = useRef<{ x: number; y: number } | null>(null);
+		const layoutScreenDragRef = useRef<{
+			regionId: string | null;
+			startClientX: number;
+			startClientY: number;
+			startFocus: { x: number; y: number };
+		} | null>(null);
+		const layoutScreenPanRangeRef = useRef({ x: 0, y: 0 });
+		const [layoutScreenCursor, setLayoutScreenCursor] = useState<"grab" | "grabbing" | null>(
+			null,
+		);
 		const stageSizeRef = useRef({ width: 0, height: 0 });
 		const videoSizeRef = useRef({ width: 0, height: 0 });
 		const baseScaleRef = useRef(1);
@@ -958,7 +1000,15 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				webcamVideoDimensions.width,
 				webcamVideoDimensions.height,
 			);
-			const targetAspect = Math.max(0.01, webcamWidth) / Math.max(0.01, webcamHeight);
+			// In camera/split layouts the webcam fills a band whose shape comes from
+			// the stage, not the bubble width/height sliders. UI gates these layouts
+			// to portrait presets, so the "native" fallback ratio is never hit here.
+			const bandAspect = getSceneLayoutCameraAspect(
+				resolveSceneLayout(activeLayoutForUi, webcamEnabled && !!webcamVideoPath),
+				getAspectRatioValue(aspectRatio),
+			);
+			const targetAspect =
+				bandAspect ?? Math.max(0.01, webcamWidth) / Math.max(0.01, webcamHeight);
 			const coverScale = Math.max(targetAspect / sw, 1 / sh);
 			const drawWidth = webcamVideoDimensions.width * coverScale;
 			const drawHeight = webcamVideoDimensions.height * coverScale;
@@ -973,7 +1023,16 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				maxWidth: "none",
 				willChange: "left, top, width, height",
 			};
-		}, [webcamCropRegion, webcamHeight, webcamVideoDimensions, webcamWidth]);
+		}, [
+			webcamCropRegion,
+			webcamHeight,
+			webcamVideoDimensions,
+			webcamWidth,
+			activeLayoutForUi,
+			aspectRatio,
+			webcamEnabled,
+			webcamVideoPath,
+		]);
 
 		const applyWebcamBubbleLayout = useCallback(
 			(zoomScale: number) => {
@@ -984,6 +1043,37 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					if (bubble) {
 						bubble.style.display = "none";
 					}
+					return;
+				}
+
+				const resolvedLayout = resolveSceneLayout(
+					activeLayoutRef.current,
+					webcamEnabled && !!webcamVideoPath,
+				);
+				const { cameraRect } = computeSceneBandRects(
+					resolvedLayout,
+					overlay.clientWidth,
+					overlay.clientHeight,
+				);
+				if (resolvedLayout.mode !== "default" && !cameraRect) {
+					bubble.style.display = "none";
+					return;
+				}
+				if (cameraRect) {
+					bubble.style.display = "block";
+					bubble.style.left = `${cameraRect.x}px`;
+					bubble.style.top = `${cameraRect.y}px`;
+					bubble.style.width = `${cameraRect.width}px`;
+					bubble.style.height = `${cameraRect.height}px`;
+					bubble.style.aspectRatio = `${cameraRect.width} / ${cameraRect.height}`;
+					bubble.style.filter = "none";
+					bubble.style.borderRadius = "0px";
+					bubble.style.boxShadow = "none";
+					bubbleInner.style.borderRadius = "0px";
+					bubbleInner.style.overflow = "hidden";
+					bubbleInner.style.contain = "paint";
+					bubbleInner.style.clipPath = "none";
+					bubbleInner.style.removeProperty("-webkit-clip-path");
 					return;
 				}
 
@@ -1050,8 +1140,74 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			],
 		);
 
+		const resolveActiveLayoutForTime = useCallback(
+			(timeMs: number) => getLayoutAtTime(layoutRegionsRef.current, layout, timeMs),
+			[layout],
+		);
+		const syncActiveLayoutForTime = useCallback(
+			(timeMs: number, relayout = false) => {
+				const nextLayout = resolveActiveLayoutForTime(timeMs);
+				if (areSceneLayoutsEqual(activeLayoutRef.current, nextLayout)) {
+					if (relayout) {
+						layoutVideoContentRef.current?.();
+						applyWebcamBubbleLayout(animationStateRef.current.appliedScale || 1);
+					}
+					return;
+				}
+
+				activeLayoutRef.current = nextLayout;
+				setActiveLayoutForUi((current) =>
+					areSceneLayoutsEqual(current, nextLayout) ? current : nextLayout,
+				);
+				layoutVideoContentRef.current?.();
+				applyWebcamBubbleLayout(animationStateRef.current.appliedScale || 1);
+			},
+			[applyWebcamBubbleLayout, resolveActiveLayoutForTime],
+		);
+
 		const clampFocusToStage = useCallback((focus: ZoomFocus, depth: ZoomDepth) => {
 			return clampFocusToStageUtil(focus, depth, stageSizeRef.current);
+		}, []);
+
+		const resolveLayoutScreenDragTarget = useCallback((clientX: number, clientY: number) => {
+			if (isPlayingRef.current) return null;
+
+			const selectedZoomId = selectedZoomIdRef.current;
+			const selectedZoom = selectedZoomId
+				? zoomRegionsRef.current.find((region) => region.id === selectedZoomId)
+				: null;
+			if (selectedZoom?.mode === "manual") return null;
+
+			const activeLayout = activeLayoutRef.current;
+			if (activeLayout.mode !== "split" && activeLayout.mode !== "screen") return null;
+
+			const overlayEl = overlayRef.current;
+			if (!overlayEl) return null;
+
+			const overlayRect = overlayEl.getBoundingClientRect();
+			const localX = clientX - overlayRect.left;
+			const localY = clientY - overlayRect.top;
+			const bandRect = baseMaskRef.current;
+			const isInsideBand =
+				localX >= bandRect.x &&
+				localX <= bandRect.x + bandRect.width &&
+				localY >= bandRect.y &&
+				localY <= bandRect.y + bandRect.height;
+			if (!isInsideBand) return null;
+
+			const regions = layoutRegionsRef.current ?? [];
+			if (regions.length === 0) return { regionId: null as string | null };
+
+			const selectedLayoutId = selectedLayoutIdRef.current;
+			if (!selectedLayoutId) return null;
+
+			const selectedRegion = regions.find((region) => region.id === selectedLayoutId);
+			if (!selectedRegion) return null;
+
+			const timeMs = currentTimeRef.current;
+			if (timeMs < selectedRegion.startMs || timeMs >= selectedRegion.endMs) return null;
+
+			return { regionId: selectedRegion.id };
 		}, []);
 
 		const updateOverlayForRegion = useCallback(
@@ -1111,6 +1267,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			const maskGraphics = maskGraphicsRef.current;
 			const videoElement = videoRef.current;
 			const cameraContainer = cameraContainerRef.current;
+			const videoContainer = videoContainerRef.current;
 
 			if (
 				!container ||
@@ -1118,7 +1275,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				!videoSprite ||
 				!maskGraphics ||
 				!videoElement ||
-				!cameraContainer
+				!cameraContainer ||
+				!videoContainer
 			) {
 				return;
 			}
@@ -1146,6 +1304,46 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				}
 			}
 
+			const resolvedLayout = resolveSceneLayout(
+				activeLayoutRef.current,
+				webcamEnabled && !!webcamVideoPath,
+			);
+			const bands = computeSceneBandRects(
+				resolvedLayout,
+				container.clientWidth,
+				container.clientHeight,
+			);
+			screenZoomAnchorRef.current = bands.screenRect
+				? {
+						x: bands.screenRect.x + bands.screenRect.width / 2,
+						y: bands.screenRect.y + bands.screenRect.height / 2,
+					}
+				: null;
+
+			if (resolvedLayout.mode !== "default" && !bands.screenRect) {
+				videoSprite.visible = false;
+				maskGraphics.visible = false;
+				videoContainer.visible = false;
+				app.renderer.resize(container.clientWidth, container.clientHeight);
+				stageSizeRef.current = {
+					width: container.clientWidth,
+					height: container.clientHeight,
+				};
+				syncPreviewMotionBlurQuality();
+				baseMaskRef.current = {
+					x: 0,
+					y: 0,
+					width: container.clientWidth,
+					height: container.clientHeight,
+				};
+				applyWebcamBubbleLayout(animationStateRef.current.appliedScale || 1);
+				return;
+			}
+
+			videoSprite.visible = true;
+			maskGraphics.visible = true;
+			videoContainer.visible = true;
+
 			const result = layoutVideoContentUtil({
 				container,
 				app,
@@ -1157,6 +1355,12 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				borderRadius,
 				padding,
 				frameInsets,
+				contentRect: bands.screenRect ?? undefined,
+				fitMode: bands.screenRect ? "cover" : undefined,
+				contentFocus: bands.screenRect
+					? (layoutScreenFocusOverrideRef.current ??
+						getSceneLayoutScreenFocus(resolvedLayout))
+					: undefined,
 			});
 
 			if (result) {
@@ -1165,6 +1369,9 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				videoSizeRef.current = result.videoSize;
 				baseScaleRef.current = result.baseScale;
 				baseOffsetRef.current = result.baseOffset;
+				layoutScreenPanRangeRef.current = bands.screenRect
+					? result.panRange
+					: { x: 0, y: 0 };
 				const renderResolution = app.renderer.resolution || window.devicePixelRatio || 1;
 				baseMaskRef.current = {
 					...result.maskRect,
@@ -1268,6 +1475,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			shadowIntensity,
 			applyWebcamBubbleLayout,
 			syncPreviewMotionBlurQuality,
+			webcamEnabled,
+			webcamVideoPath,
 		]);
 
 		useEffect(() => {
@@ -1492,28 +1701,86 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			updateOverlayForRegion({ ...region, focus: clampedFocus }, clampedFocus);
 		};
 
+		const updateLayoutScreenFocusFromClientPoint = (clientX: number, clientY: number) => {
+			const drag = layoutScreenDragRef.current;
+			if (!drag) return;
+
+			const panRange = layoutScreenPanRangeRef.current;
+			const nextFocus = {
+				x:
+					panRange.x > 0
+						? clamp01(drag.startFocus.x - (clientX - drag.startClientX) / panRange.x)
+						: drag.startFocus.x,
+				y:
+					panRange.y > 0
+						? clamp01(drag.startFocus.y - (clientY - drag.startClientY) / panRange.y)
+						: drag.startFocus.y,
+			};
+
+			layoutScreenFocusOverrideRef.current = nextFocus;
+			layoutVideoContentRef.current?.();
+			onLayoutScreenFocusChange?.(drag.regionId, nextFocus);
+		};
+
 		const handleOverlayPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
 			if (isPlayingRef.current) return;
 			const regionId = selectedZoomIdRef.current;
-			if (!regionId) return;
-			const region = zoomRegionsRef.current.find((r) => r.id === regionId);
-			if (!region || region.mode !== "manual") return;
-			onSelectZoom(region.id);
+			const region = regionId ? zoomRegionsRef.current.find((r) => r.id === regionId) : null;
+			if (region?.mode === "manual") {
+				onSelectZoom(region.id);
+				event.preventDefault();
+				isDraggingFocusRef.current = true;
+				event.currentTarget.setPointerCapture(event.pointerId);
+				updateFocusFromClientPoint(event.clientX, event.clientY);
+				return;
+			}
+
+			const target = resolveLayoutScreenDragTarget(event.clientX, event.clientY);
+			if (!target) return;
+
 			event.preventDefault();
-			isDraggingFocusRef.current = true;
+			isDraggingLayoutScreenRef.current = true;
+			setLayoutScreenCursor("grabbing");
+			layoutScreenFocusOverrideRef.current = getSceneLayoutScreenFocus(
+				activeLayoutRef.current,
+			);
+			layoutScreenDragRef.current = {
+				regionId: target.regionId,
+				startClientX: event.clientX,
+				startClientY: event.clientY,
+				startFocus: layoutScreenFocusOverrideRef.current,
+			};
 			event.currentTarget.setPointerCapture(event.pointerId);
-			updateFocusFromClientPoint(event.clientX, event.clientY);
 		};
 
 		const handleOverlayPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-			if (!isDraggingFocusRef.current) return;
-			event.preventDefault();
-			updateFocusFromClientPoint(event.clientX, event.clientY);
+			if (isDraggingFocusRef.current) {
+				event.preventDefault();
+				updateFocusFromClientPoint(event.clientX, event.clientY);
+				return;
+			}
+
+			if (isDraggingLayoutScreenRef.current) {
+				event.preventDefault();
+				updateLayoutScreenFocusFromClientPoint(event.clientX, event.clientY);
+				return;
+			}
+
+			setLayoutScreenCursor(
+				resolveLayoutScreenDragTarget(event.clientX, event.clientY) ? "grab" : null,
+			);
 		};
 
 		const endFocusDrag = (event: React.PointerEvent<HTMLDivElement>) => {
-			if (!isDraggingFocusRef.current) return;
+			if (!isDraggingFocusRef.current && !isDraggingLayoutScreenRef.current) return;
 			isDraggingFocusRef.current = false;
+			isDraggingLayoutScreenRef.current = false;
+			layoutScreenDragRef.current = null;
+			layoutScreenFocusOverrideRef.current = null;
+			layoutVideoContentRef.current?.();
+			setLayoutScreenCursor(
+				resolveLayoutScreenDragTarget(event.clientX, event.clientY) ? "grab" : null,
+			);
 			try {
 				event.currentTarget.releasePointerCapture(event.pointerId);
 			} catch {
@@ -1534,8 +1801,17 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		}, [zoomRegions]);
 
 		useEffect(() => {
+			layoutRegionsRef.current = layoutRegions;
+			syncActiveLayoutForTime(currentTimeRef.current, true);
+		}, [layoutRegions, syncActiveLayoutForTime]);
+
+		useEffect(() => {
 			selectedZoomIdRef.current = selectedZoomId;
 		}, [selectedZoomId]);
+
+		useEffect(() => {
+			selectedLayoutIdRef.current = selectedLayoutId;
+		}, [selectedLayoutId]);
 
 		useEffect(() => {
 			isPlayingRef.current = isPlaying;
@@ -1850,13 +2126,14 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		useEffect(() => {
 			const timeMs = currentTime * 1000;
 			currentTimeRef.current = timeMs;
+			syncActiveLayoutForTime(timeMs);
 			const videoInfo = extensionHost.getVideoInfoSnapshot();
 			extensionHost.setPlaybackState({
 				currentTimeMs: timeMs,
 				durationMs: videoInfo?.durationMs ?? 0,
 				isPlaying,
 			});
-		}, [currentTime, isPlaying]);
+		}, [currentTime, isPlaying, syncActiveLayoutForTime]);
 
 		useEffect(() => {
 			if (!pixiReady || !videoReady) return;
@@ -1911,6 +2188,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					isPlaying: false,
 					motionBlurAmount: 0,
 					motionBlurState: motionBlurStateRef.current,
+					anchor: screenZoomAnchorRef.current ?? undefined,
 				});
 
 				requestAnimationFrame(() => {
@@ -2090,14 +2368,27 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		useEffect(() => {
 			const overlayEl = overlayRef.current;
 			if (!overlayEl) return;
-			if (!selectedZoom || selectedZoom.mode !== "manual") {
-				overlayEl.style.cursor = "default";
-				overlayEl.style.pointerEvents = "none";
+			if (selectedZoom?.mode === "manual") {
+				overlayEl.style.cursor = isPlaying ? "not-allowed" : "crosshair";
+				overlayEl.style.pointerEvents = isPlaying ? "none" : "auto";
 				return;
 			}
-			overlayEl.style.cursor = isPlaying ? "not-allowed" : "crosshair";
-			overlayEl.style.pointerEvents = isPlaying ? "none" : "auto";
-		}, [selectedZoom, isPlaying]);
+			// Screen-framing drag needs the overlay interactive too: active layout
+			// shows a screen band and the edit target is unambiguous (a selected
+			// region, or no regions at all → project layout). Fine-grained checks
+			// (inside the band, playhead within region) run per pointer-down.
+			const layoutDragPossible =
+				!isPlaying &&
+				(activeLayoutForUi.mode === "split" || activeLayoutForUi.mode === "screen") &&
+				((layoutRegions ?? []).length === 0 || selectedLayoutId != null);
+			if (layoutDragPossible) {
+				overlayEl.style.cursor = "grab";
+				overlayEl.style.pointerEvents = "auto";
+				return;
+			}
+			overlayEl.style.cursor = "default";
+			overlayEl.style.pointerEvents = "none";
+		}, [selectedZoom, isPlaying, activeLayoutForUi, layoutRegions, selectedLayoutId]);
 
 		useEffect(() => {
 			const container = containerRef.current;
@@ -2381,6 +2672,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					transformOverride: transform,
 					motionBlurState: motionBlurStateRef.current,
 					frameTimeMs: performance.now(),
+					anchor: screenZoomAnchorRef.current ?? undefined,
 				});
 
 				state.x = appliedTransform.x;
@@ -2477,6 +2769,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					zoomProgress: state.progress,
 					focusX: state.focusX,
 					focusY: state.focusY,
+					anchor: screenZoomAnchorRef.current ?? undefined,
 				});
 
 				// Spring-driven zoom animation
@@ -3065,7 +3358,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					<div
 						ref={overlayRef}
 						className="absolute inset-0 select-none"
-						style={{ pointerEvents: "none" }}
+						style={{ cursor: layoutScreenCursor ?? undefined }}
 						onPointerDown={handleOverlayPointerDown}
 						onPointerMove={handleOverlayPointerMove}
 						onPointerUp={handleOverlayPointerUp}

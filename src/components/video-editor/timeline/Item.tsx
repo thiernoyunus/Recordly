@@ -1,6 +1,7 @@
 import {
 	FilmSlate as Film,
 	Gauge,
+	SquaresFour as LayoutIcon,
 	ChatCircle as MessageSquare,
 	MusicNotes as Music,
 	MouseLeftClickIcon as PhMouseLeftClick,
@@ -35,10 +36,18 @@ interface ItemProps {
 	waveformGain?: number;
 	waveformNormalize?: boolean;
 	muted?: boolean;
-	variant?: "zoom" | "trim" | "clip" | "annotation" | "speed" | "audio" | "caption";
+	layoutMode?: "default" | "split" | "camera" | "screen";
+	variant?: "zoom" | "trim" | "clip" | "annotation" | "speed" | "audio" | "caption" | "layout";
 	isLoading?: boolean;
 	loadingLabel?: string;
 }
+
+const LAYOUT_MODE_LABELS: Record<string, string> = {
+	default: "Default",
+	split: "Split",
+	camera: "Camera",
+	screen: "Screen",
+};
 
 // Map zoom depth to multiplier labels
 const ZOOM_LABELS: Record<number, string> = {
@@ -76,6 +85,7 @@ export default function Item({
 	waveformGain = 1,
 	waveformNormalize = false,
 	muted = false,
+	layoutMode,
 	variant = "zoom",
 	isLoading = false,
 	loadingLabel,
@@ -126,6 +136,7 @@ export default function Item({
 	const isSpeed = variant === "speed";
 	const isAudio = variant === "audio";
 	const isCaption = variant === "caption";
+	const isLayout = variant === "layout";
 	const showAudioWaveform = isAudio && Boolean(waveformPeaks);
 	const clipSpeedLabel = isClip ? formatClipSpeedLabel(speedValue ?? 1) : null;
 
@@ -141,7 +152,9 @@ export default function Item({
 						? glassStyles.glassDarkGreen
 						: isCaption
 							? glassStyles.glassCaption
-							: glassStyles.glassYellow;
+							: isLayout
+								? glassStyles.glassTeal
+								: glassStyles.glassYellow;
 
 	const MIN_ITEM_PX = 6;
 	const handleSelect = () => {
@@ -257,6 +270,13 @@ export default function Item({
 									<Music className="w-3.5 h-3.5 shrink-0" />
 									<span className="text-[11px] font-semibold tracking-tight truncate max-w-full">
 										{children}
+									</span>
+								</>
+							) : isLayout ? (
+								<>
+									<LayoutIcon className="w-3.5 h-3.5 shrink-0" />
+									<span className="text-[11px] font-semibold tracking-tight whitespace-nowrap">
+										{(layoutMode && LAYOUT_MODE_LABELS[layoutMode]) || "Layout"}
 									</span>
 								</>
 							) : (
