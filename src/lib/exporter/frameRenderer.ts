@@ -23,6 +23,7 @@ import {
 	BASE_PREVIEW_WIDTH,
 	DEFAULT_SCENE_LAYOUT,
 	getLayoutAtTime,
+	getWebcamCornerExponent,
 	ZOOM_DEPTH_SCALES,
 } from "@/components/video-editor/types";
 import { DEFAULT_FOCUS } from "@/components/video-editor/videoPlayback/constants";
@@ -2574,6 +2575,7 @@ export class FrameRenderer {
 			width: dimensions.width,
 			height: dimensions.height,
 			radius,
+			exponent: cameraRect ? undefined : getWebcamCornerExponent(webcam.cornerRadius ?? 18),
 		});
 		bubbleCtx.clip();
 		if (webcam.mirror) {

@@ -6,6 +6,12 @@ interface SquircleRect {
 	width: number;
 	height: number;
 	radius: number;
+	/**
+	 * Superellipse exponent for the corners. Default 4.5 is the Apple-style
+	 * squircle. Pass 2 for true circular/elliptical arcs (a square rect at full
+	 * radius then renders as a perfect circle).
+	 */
+	exponent?: number;
 }
 
 interface SquirclePoint {
@@ -24,10 +30,16 @@ function getClampedRadius(width: number, height: number, radius: number) {
 	return clamp(radius, 0, Math.min(width, height) / 2);
 }
 
-function getSuperellipsePoint(centerX: number, centerY: number, radius: number, angle: number) {
+function getSuperellipsePoint(
+	centerX: number,
+	centerY: number,
+	radius: number,
+	angle: number,
+	curveExponent: number = SQUIRCLE_EXPONENT,
+) {
 	const cos = Math.cos(angle);
 	const sin = Math.sin(angle);
-	const exponent = 2 / SQUIRCLE_EXPONENT;
+	const exponent = 2 / curveExponent;
 
 	return {
 		x: centerX + Math.sign(cos) * radius * Math.pow(Math.abs(cos), exponent),
@@ -41,6 +53,7 @@ export function getSquirclePathPoints({
 	width,
 	height,
 	radius,
+	exponent = SQUIRCLE_EXPONENT,
 }: SquircleRect): SquirclePoint[] {
 	if (width <= 0 || height <= 0) {
 		return [];
@@ -88,7 +101,15 @@ export function getSquirclePathPoints({
 		for (let index = 1; index <= SQUIRCLE_SEGMENTS_PER_CORNER; index += 1) {
 			const t = index / SQUIRCLE_SEGMENTS_PER_CORNER;
 			const angle = corner.start + (corner.end - corner.start) * t;
-			points.push(getSuperellipsePoint(corner.centerX, corner.centerY, clampedRadius, angle));
+			points.push(
+				getSuperellipsePoint(
+					corner.centerX,
+					corner.centerY,
+					clampedRadius,
+					angle,
+					exponent,
+				),
+			);
 		}
 	}
 

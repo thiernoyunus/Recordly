@@ -32,6 +32,7 @@ import {
 	DEFAULT_SCENE_LAYOUT,
 	getDefaultCaptionFontFamily,
 	getLayoutAtTime,
+	getWebcamCornerExponent,
 	ZOOM_DEPTH_SCALES,
 } from "@/components/video-editor/types";
 import { DEFAULT_FOCUS } from "@/components/video-editor/videoPlayback/constants";
@@ -234,6 +235,8 @@ interface WebcamLayoutCache {
 	positionX: number;
 	positionY: number;
 	radius: number;
+	/** Superellipse exponent for the bubble corners (2 = true circle). */
+	cornerExponent: number | undefined;
 	shadowStrength: number;
 	mirror: boolean;
 }
@@ -847,6 +850,7 @@ export class FrameRenderer {
 			offsetY: number;
 			alpha: number;
 			blur: number;
+			exponent?: number;
 		},
 	): void {
 		if (options.alpha <= 0 || options.width <= 0 || options.height <= 0) {
@@ -876,6 +880,7 @@ export class FrameRenderer {
 			width: options.width,
 			height: options.height,
 			radius: options.radius,
+			exponent: options.exponent,
 		});
 		layer.context.fill();
 		layer.context.restore();
@@ -2634,6 +2639,7 @@ export class FrameRenderer {
 			areNearlyEqual(previousLayout.positionX, nextLayout.positionX) &&
 			areNearlyEqual(previousLayout.positionY, nextLayout.positionY) &&
 			areNearlyEqual(previousLayout.radius, nextLayout.radius) &&
+			previousLayout.cornerExponent === nextLayout.cornerExponent &&
 			areNearlyEqual(previousLayout.shadowStrength, nextLayout.shadowStrength)
 		);
 	}
@@ -2663,6 +2669,7 @@ export class FrameRenderer {
 			width: nextLayout.width,
 			height: nextLayout.height,
 			radius: nextLayout.radius,
+			exponent: nextLayout.cornerExponent,
 		});
 		this.webcamMaskGraphics.fill({ color: 0xffffff });
 
@@ -2683,6 +2690,7 @@ export class FrameRenderer {
 				offsetY,
 				alpha: layer.alphaScale * nextLayout.shadowStrength,
 				blur: Math.max(0, shadowSize * layer.blurScale * nextLayout.shadowStrength),
+				exponent: nextLayout.cornerExponent,
 			});
 		}
 
@@ -2984,6 +2992,9 @@ export class FrameRenderer {
 					legacyCorner: webcam.corner,
 				});
 		const radius = cameraRect ? 0 : Math.max(0, webcam.cornerRadius ?? 18);
+		const cornerExponent = cameraRect
+			? undefined
+			: getWebcamCornerExponent(webcam.cornerRadius ?? 18);
 		const shadowStrength = cameraRect ? 0 : clampUnitInterval(webcam.shadow ?? 0);
 
 		this.webcamRootContainer.visible = true;
@@ -2996,6 +3007,7 @@ export class FrameRenderer {
 			positionX: position.x,
 			positionY: position.y,
 			radius,
+			cornerExponent,
 			shadowStrength,
 			mirror: webcam.mirror,
 		};

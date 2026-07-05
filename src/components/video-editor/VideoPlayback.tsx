@@ -163,6 +163,7 @@ import {
 	DEFAULT_ZOOM_OUT_EASING,
 	getDefaultCaptionFontFamily,
 	getLayoutAtTime,
+	getWebcamCornerExponent,
 	type LayoutRegion,
 	type SceneLayoutSettings,
 } from "./types";
@@ -1131,6 +1132,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					width: scaledDimensions.width,
 					height: scaledDimensions.height,
 					radius: webcamCornerRadius,
+					exponent: getWebcamCornerExponent(webcamCornerRadius),
 				});
 				const shadowSize = Math.min(scaledDimensions.width, scaledDimensions.height);
 				bubble.style.filter = `drop-shadow(0 ${Math.round(shadowSize * 0.06)}px ${Math.round(
