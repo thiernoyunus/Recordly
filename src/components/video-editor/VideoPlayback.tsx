@@ -367,6 +367,7 @@ interface VideoPlaybackProps {
 	onSelectZoom: (id: string | null) => void;
 	onZoomFocusChange: (id: string, focus: ZoomFocus) => void;
 	onLayoutScreenFocusChange?: (regionId: string | null, focus: { x: number; y: number }) => void;
+	onWebcamChange?: (webcam: WebcamOverlaySettings) => void;
 	isPlaying: boolean;
 	showShadow?: boolean;
 	shadowIntensity?: number;
@@ -463,6 +464,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			onSelectZoom,
 			onZoomFocusChange,
 			onLayoutScreenFocusChange,
+			onWebcamChange,
 			isPlaying,
 			showShadow,
 			shadowIntensity = 0,
@@ -612,6 +614,15 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const [layoutScreenCursor, setLayoutScreenCursor] = useState<"grab" | "grabbing" | null>(
 			null,
 		);
+		const isDraggingWebcamRef = useRef(false);
+		const webcamDragRef = useRef<{
+			startClientX: number;
+			startClientY: number;
+			startLeft: number;
+			startTop: number;
+			bubbleWidth: number;
+			bubbleHeight: number;
+		} | null>(null);
 		const stageSizeRef = useRef({ width: 0, height: 0 });
 		const videoSizeRef = useRef({ width: 0, height: 0 });
 		const baseScaleRef = useRef(1);
@@ -983,6 +994,16 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const webcamTimeOffsetMs = webcam?.timeOffsetMs;
 		const webcamCropRegion = webcam?.cropRegion;
 		const webcamMirror = webcam?.mirror ?? false;
+		// The floating webcam bubble is drag-to-reposition only in the default
+		// (bubble) layout while paused — split/camera pin it to a fixed band and
+		// screen hides it. Driven through the JSX style (not imperatively) so React
+		// owns pointer-events and it can't drift out of sync with re-renders.
+		const webcamBubbleDraggable =
+			!isPlaying &&
+			!!onWebcamChange &&
+			webcamEnabled &&
+			!!webcamVideoPath &&
+			activeLayoutForUi.mode === "default";
 		const webcamHeight = getCropMatchedWebcamHeightPercent(
 			webcamWidth,
 			rawWebcamHeight,
@@ -1794,6 +1815,81 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 
 		const handleOverlayPointerLeave = (event: React.PointerEvent<HTMLDivElement>) => {
 			endFocusDrag(event);
+		};
+
+		// Dragging the floating webcam bubble to reposition it. Only in the default
+		// (bubble) layout — split/camera pin the webcam to a fixed band, screen
+		// hides it — and only while paused. Mirrors the screen-framing drag model.
+		const isWebcamBubbleDragEligible = () =>
+			!isPlayingRef.current &&
+			!!onWebcamChange &&
+			webcamEnabled &&
+			!!webcamVideoPath &&
+			activeLayoutRef.current.mode === "default";
+
+		const handleWebcamPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+			if (!isWebcamBubbleDragEligible()) return;
+			const bubble = webcamBubbleRef.current;
+			const overlay = overlayRef.current;
+			if (!bubble || !overlay) return;
+
+			const overlayRect = overlay.getBoundingClientRect();
+			const bubbleRect = bubble.getBoundingClientRect();
+			webcamDragRef.current = {
+				startClientX: event.clientX,
+				startClientY: event.clientY,
+				startLeft: bubbleRect.left - overlayRect.left,
+				startTop: bubbleRect.top - overlayRect.top,
+				bubbleWidth: bubbleRect.width,
+				bubbleHeight: bubbleRect.height,
+			};
+			isDraggingWebcamRef.current = true;
+			event.preventDefault();
+			event.stopPropagation();
+			event.currentTarget.setPointerCapture(event.pointerId);
+		};
+
+		const handleWebcamPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+			const drag = webcamDragRef.current;
+			const overlay = overlayRef.current;
+			if (!isDraggingWebcamRef.current || !drag || !overlay || !onWebcamChange || !webcam) {
+				return;
+			}
+			event.preventDefault();
+
+			const safeMargin = Math.max(0, webcamMargin);
+			const availableWidth = Math.max(
+				0,
+				overlay.clientWidth - drag.bubbleWidth - safeMargin * 2,
+			);
+			const availableHeight = Math.max(
+				0,
+				overlay.clientHeight - drag.bubbleHeight - safeMargin * 2,
+			);
+			const nextLeft = drag.startLeft + (event.clientX - drag.startClientX);
+			const nextTop = drag.startTop + (event.clientY - drag.startClientY);
+			const positionX =
+				availableWidth > 0 ? clamp01((nextLeft - safeMargin) / availableWidth) : 0;
+			const positionY =
+				availableHeight > 0 ? clamp01((nextTop - safeMargin) / availableHeight) : 0;
+
+			onWebcamChange({
+				...webcam,
+				positionPreset: "custom",
+				positionX,
+				positionY,
+			});
+		};
+
+		const endWebcamDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+			if (!isDraggingWebcamRef.current) return;
+			isDraggingWebcamRef.current = false;
+			webcamDragRef.current = null;
+			try {
+				event.currentTarget.releasePointerCapture(event.pointerId);
+			} catch {
+				/* Pointer capture may already be released during drag cleanup. */
+			}
 		};
 
 		useEffect(() => {
@@ -3375,8 +3471,13 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 								className="absolute"
 								style={{
 									display: webcam.enabled ? "block" : "none",
-									pointerEvents: "none",
+									pointerEvents: webcamBubbleDraggable ? "auto" : "none",
+									cursor: webcamBubbleDraggable ? "grab" : undefined,
 								}}
+								onPointerDown={handleWebcamPointerDown}
+								onPointerMove={handleWebcamPointerMove}
+								onPointerUp={endWebcamDrag}
+								onPointerCancel={endWebcamDrag}
 							>
 								<div
 									ref={webcamBubbleInnerRef}

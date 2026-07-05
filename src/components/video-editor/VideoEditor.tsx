@@ -5738,6 +5738,7 @@ export default function VideoEditor() {
 			onSelectZoom={handleSelectZoom}
 			onZoomFocusChange={handleZoomFocusChange}
 			onLayoutScreenFocusChange={handleLayoutScreenFocusChange}
+			onWebcamChange={setWebcam}
 			isPlaying={isPlaying}
 			showShadow={shadowIntensity > 0}
 			shadowIntensity={shadowIntensity}
