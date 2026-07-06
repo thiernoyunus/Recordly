@@ -4173,17 +4173,15 @@ export function SettingsPanel({
 										(webcam?.cornerRadius ?? DEFAULT_WEBCAM_CORNER_RADIUS) >=
 										WEBCAM_CIRCLE_CORNER_RADIUS
 									}
+									// Only flip the corner radius. Circle mode forces a square
+									// box at render time, so the saved width/height are left
+									// untouched and restored when the toggle is turned off.
 									onCheckedChange={(circle) =>
-										circle
-											? updateWebcam({
-													width: webcamWidth,
-													size: webcamWidth,
-													height: webcamWidth,
-													cornerRadius: WEBCAM_CIRCLE_CORNER_RADIUS,
-												})
-											: updateWebcam({
-													cornerRadius: DEFAULT_WEBCAM_CORNER_RADIUS,
-												})
+										updateWebcam({
+											cornerRadius: circle
+												? WEBCAM_CIRCLE_CORNER_RADIUS
+												: DEFAULT_WEBCAM_CORNER_RADIUS,
+										})
 									}
 									className="data-[state=checked]:bg-[#2563EB] scale-75"
 								/>
