@@ -187,10 +187,13 @@ export const DEFAULT_WEBCAM_CORNER_RADIUS = 90;
 // Max roundness the UI slider allows; on a square bubble the squircle radius
 // clamps to half the side, giving the roundest ("circle") shape available.
 export const WEBCAM_CIRCLE_CORNER_RADIUS = 160;
-// At/above max roundness the bubble renders with true-circle arcs (superellipse
-// exponent 2) instead of the default squircle, so a square bubble is a real circle.
+// At/above max roundness the bubble renders as a true circle: square box +
+// true-circle arcs (superellipse exponent 2) instead of the default squircle.
+export function isWebcamCircle(cornerRadius: number): boolean {
+	return cornerRadius >= WEBCAM_CIRCLE_CORNER_RADIUS;
+}
 export function getWebcamCornerExponent(cornerRadius: number): number | undefined {
-	return cornerRadius >= WEBCAM_CIRCLE_CORNER_RADIUS ? 2 : undefined;
+	return isWebcamCircle(cornerRadius) ? 2 : undefined;
 }
 export const DEFAULT_WEBCAM_SHADOW = 0.67;
 export const DEFAULT_WEBCAM_MARGIN = 24;

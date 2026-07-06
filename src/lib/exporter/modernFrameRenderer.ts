@@ -30,9 +30,11 @@ import type {
 } from "@/components/video-editor/types";
 import {
 	DEFAULT_SCENE_LAYOUT,
+	DEFAULT_WEBCAM_CORNER_RADIUS,
 	getDefaultCaptionFontFamily,
 	getLayoutAtTime,
 	getWebcamCornerExponent,
+	isWebcamCircle,
 	ZOOM_DEPTH_SCALES,
 } from "@/components/video-editor/types";
 import { DEFAULT_FOCUS } from "@/components/video-editor/videoPlayback/constants";
@@ -2960,13 +2962,17 @@ export class FrameRenderer {
 			liveSourceDimensions.height > 0
 				? liveSourceDimensions.height
 				: renderableWebcamSource.height;
-		const heightPercent = getCropMatchedWebcamHeightPercent(
-			widthPercent,
-			webcam.height ?? webcam.size ?? 50,
-			aspectSourceWidth,
-			aspectSourceHeight,
-			webcam.cropRegion,
-		);
+		// Circle mode forces a square box so it stays a true circle regardless of crop.
+		const heightPercent =
+			!cameraRect && isWebcamCircle(webcam.cornerRadius ?? DEFAULT_WEBCAM_CORNER_RADIUS)
+				? widthPercent
+				: getCropMatchedWebcamHeightPercent(
+						widthPercent,
+						webcam.height ?? webcam.size ?? 50,
+						aspectSourceWidth,
+						aspectSourceHeight,
+						webcam.cropRegion,
+					);
 		const dimensions =
 			cameraRect ??
 			getWebcamOverlayDimensionsPx({
@@ -2994,7 +3000,7 @@ export class FrameRenderer {
 		const radius = cameraRect ? 0 : Math.max(0, webcam.cornerRadius ?? 18);
 		const cornerExponent = cameraRect
 			? undefined
-			: getWebcamCornerExponent(webcam.cornerRadius ?? 18);
+			: getWebcamCornerExponent(webcam.cornerRadius ?? DEFAULT_WEBCAM_CORNER_RADIUS);
 		const shadowStrength = cameraRect ? 0 : clampUnitInterval(webcam.shadow ?? 0);
 
 		this.webcamRootContainer.visible = true;

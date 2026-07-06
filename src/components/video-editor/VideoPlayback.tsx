@@ -164,6 +164,7 @@ import {
 	getDefaultCaptionFontFamily,
 	getLayoutAtTime,
 	getWebcamCornerExponent,
+	isWebcamCircle,
 	type LayoutRegion,
 	type SceneLayoutSettings,
 } from "./types";
@@ -1005,13 +1006,17 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			webcamEnabled &&
 			!!webcamVideoPath &&
 			activeLayoutForUi.mode === "default";
-		const webcamHeight = getCropMatchedWebcamHeightPercent(
-			webcamWidth,
-			rawWebcamHeight,
-			webcamVideoDimensions?.width,
-			webcamVideoDimensions?.height,
-			webcamCropRegion,
-		);
+		// Circle mode forces a square box (cover-crop fills it) so it stays a true
+		// circle even with a non-square crop, instead of crop-matching to an ellipse.
+		const webcamHeight = isWebcamCircle(webcamCornerRadius)
+			? webcamWidth
+			: getCropMatchedWebcamHeightPercent(
+					webcamWidth,
+					rawWebcamHeight,
+					webcamVideoDimensions?.width,
+					webcamVideoDimensions?.height,
+					webcamCropRegion,
+				);
 		const webcamCropPreviewContentStyle = useMemo<React.CSSProperties>(() => {
 			if (!webcamVideoDimensions) {
 				return { opacity: 0 };

@@ -22,8 +22,10 @@ import {
 	BASE_PREVIEW_HEIGHT,
 	BASE_PREVIEW_WIDTH,
 	DEFAULT_SCENE_LAYOUT,
+	DEFAULT_WEBCAM_CORNER_RADIUS,
 	getLayoutAtTime,
 	getWebcamCornerExponent,
+	isWebcamCircle,
 	ZOOM_DEPTH_SCALES,
 } from "@/components/video-editor/types";
 import { DEFAULT_FOCUS } from "@/components/video-editor/videoPlayback/constants";
@@ -2516,13 +2518,17 @@ export class FrameRenderer {
 		}
 		const margin = webcam.margin ?? 24;
 		const widthPercent = webcam.width ?? webcam.size ?? 50;
-		const heightPercent = getCropMatchedWebcamHeightPercent(
-			widthPercent,
-			webcam.height ?? webcam.size ?? 50,
-			sourceWidth,
-			sourceHeight,
-			webcam.cropRegion,
-		);
+		// Circle mode forces a square box so it stays a true circle regardless of crop.
+		const heightPercent =
+			!cameraRect && isWebcamCircle(webcam.cornerRadius ?? DEFAULT_WEBCAM_CORNER_RADIUS)
+				? widthPercent
+				: getCropMatchedWebcamHeightPercent(
+						widthPercent,
+						webcam.height ?? webcam.size ?? 50,
+						sourceWidth,
+						sourceHeight,
+						webcam.cropRegion,
+					);
 		const dimensions =
 			cameraRect ??
 			getWebcamOverlayDimensionsPx({
@@ -2575,7 +2581,9 @@ export class FrameRenderer {
 			width: dimensions.width,
 			height: dimensions.height,
 			radius,
-			exponent: cameraRect ? undefined : getWebcamCornerExponent(webcam.cornerRadius ?? 18),
+			exponent: cameraRect
+				? undefined
+				: getWebcamCornerExponent(webcam.cornerRadius ?? DEFAULT_WEBCAM_CORNER_RADIUS),
 		});
 		bubbleCtx.clip();
 		if (webcam.mirror) {
