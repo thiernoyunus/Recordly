@@ -4164,20 +4164,30 @@ export function SettingsPanel({
 								formatValue={(v) => `${Math.round(v)}%`}
 								parseInput={(text) => parseFloat(text.replace(/%$/, ""))}
 							/>
-							<button
-								type="button"
-								onClick={() =>
-									updateWebcam({
-										width: webcamWidth,
-										size: webcamWidth,
-										height: webcamWidth,
-										cornerRadius: WEBCAM_CIRCLE_CORNER_RADIUS,
-									})
-								}
-								className="h-8 w-full rounded-lg border border-foreground/10 bg-foreground/5 text-xs font-semibold text-muted-foreground transition-all hover:border-foreground/20 hover:bg-foreground/10"
-							>
-								{tSettings("effects.webcamMakeCircle", "Make circle")}
-							</button>
+							<div className="flex items-center justify-between rounded-lg bg-foreground/[0.03] px-2.5 py-1.5">
+								<span className="text-[10px] text-muted-foreground">
+									{tSettings("effects.webcamCircle", "Circle")}
+								</span>
+								<Switch
+									checked={
+										(webcam?.cornerRadius ?? DEFAULT_WEBCAM_CORNER_RADIUS) >=
+										WEBCAM_CIRCLE_CORNER_RADIUS
+									}
+									onCheckedChange={(circle) =>
+										circle
+											? updateWebcam({
+													width: webcamWidth,
+													size: webcamWidth,
+													height: webcamWidth,
+													cornerRadius: WEBCAM_CIRCLE_CORNER_RADIUS,
+												})
+											: updateWebcam({
+													cornerRadius: DEFAULT_WEBCAM_CORNER_RADIUS,
+												})
+									}
+									className="data-[state=checked]:bg-[#2563EB] scale-75"
+								/>
+							</div>
 							<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-2">
 								<div className="mb-2 flex items-center justify-between gap-2">
 									<div className="text-[10px] text-muted-foreground">
