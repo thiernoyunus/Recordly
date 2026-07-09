@@ -14,6 +14,7 @@ import {
 import type {
 	AnnotationRegion,
 	AutoCaptionSettings,
+	BRollRegion,
 	CaptionCue,
 	CropRegion,
 	CursorClickEffectStyle,
@@ -103,6 +104,7 @@ import {
 	renderAnnotations,
 	renderAnnotationToCanvas,
 } from "./annotationRenderer";
+import { BrollMediaCache, drawBRollRegions } from "./brollRenderer";
 import { ForwardFrameSource } from "./forwardFrameSource";
 import { resolveMediaElementSource } from "./localMediaSource";
 import {
@@ -149,6 +151,7 @@ interface FrameRenderConfig {
 	videoWidth: number;
 	videoHeight: number;
 	annotationRegions?: AnnotationRegion[];
+	brollRegions?: BRollRegion[];
 	autoCaptions?: CaptionCue[];
 	autoCaptionSettings?: AutoCaptionSettings;
 	speedRegions?: SpeedRegion[];
@@ -525,6 +528,7 @@ export class FrameRenderer {
 	private compositeCtx: CanvasRenderingContext2D | null = null;
 	private lastEmittedClickTimeMs = -1;
 	private cleanupWebcamSource: (() => void) | null = null;
+	private brollMediaCache = new BrollMediaCache();
 
 	constructor(config: FrameRenderConfig) {
 		this.config = config;
@@ -669,6 +673,7 @@ export class FrameRenderer {
 		await this.setupBackground();
 		await this.setupFrame();
 		await this.setupWebcamSource();
+		await this.brollMediaCache.preload(this.config.brollRegions);
 
 		this.annotationScaleFactor = this.calculateAnnotationScaleFactor();
 		this.annotationAssets = await preloadAnnotationAssets(this.config.annotationRegions ?? []);
@@ -3296,6 +3301,7 @@ export class FrameRenderer {
 				);
 				this.outputCanvasOverride = this.compositeCanvas;
 			}
+			await this.compositeBrollIfNeeded(temporalSnapshot.timeMs);
 			return;
 		}
 
@@ -3370,12 +3376,51 @@ export class FrameRenderer {
 			}
 
 			await this.composeBlurAnnotationFrame(timeMs);
+			await this.compositeBrollIfNeeded(timeMs);
 			return;
 		}
 
 		this.outputCanvasOverride = null;
 		this.app.render();
 		this.compositeExtensions(timeMs, cursorTimeMs);
+		await this.compositeBrollIfNeeded(timeMs);
+	}
+
+	private async compositeBrollIfNeeded(timeMs: number): Promise<void> {
+		if (
+			(this.config.brollRegions?.length ?? 0) === 0 ||
+			!this.compositeCtx ||
+			!this.compositeCanvas ||
+			!this.app
+		) {
+			return;
+		}
+
+		const width = this.config.width;
+		const height = this.config.height;
+		const source = this.outputCanvasOverride ?? (this.app.canvas as HTMLCanvasElement);
+		if (source !== this.compositeCanvas) {
+			this.compositeCtx.clearRect(0, 0, width, height);
+			this.compositeCtx.drawImage(source, 0, 0, width, height);
+		}
+
+		const activeLayout = getLayoutAtTime(
+			this.config.layoutRegions,
+			this.config.layout ?? DEFAULT_SCENE_LAYOUT,
+			timeMs,
+		);
+		const bands = computeSceneBandRects(activeLayout, width, height);
+		await drawBRollRegions(
+			this.compositeCtx,
+			this.config.brollRegions,
+			timeMs,
+			width,
+			height,
+			bands.screenRect,
+			this.layoutCache?.maskRect,
+			this.brollMediaCache,
+		);
+		this.outputCanvasOverride = this.compositeCanvas;
 	}
 
 	private shouldCompositeExtensionFrame(): boolean {
@@ -3955,6 +4000,7 @@ export class FrameRenderer {
 	}
 
 	destroy(): void {
+		this.brollMediaCache.dispose();
 		const texturesToDestroy = new Set<Texture>();
 		if (this.videoSprite?.texture) {
 			texturesToDestroy.add(this.videoSprite.texture);

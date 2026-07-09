@@ -19,6 +19,11 @@ export interface TimelineAudioRegion extends TimelineRegion {
 	trackIndex?: number;
 }
 
+export interface TimelineBrollRegion extends TimelineRegion {
+	trackIndex?: number;
+	mediaPath?: string;
+}
+
 export interface TimelineShortcutBindings {
 	addKeyframe: ShortcutBinding;
 	addZoom: ShortcutBinding;
@@ -42,7 +47,16 @@ export interface TimelineRenderItem {
 	showSourceAudio?: boolean;
 	muted?: boolean;
 	layoutMode?: SceneLayoutMode;
-	variant: "zoom" | "trim" | "clip" | "annotation" | "speed" | "audio" | "caption" | "layout";
+	variant:
+		| "zoom"
+		| "trim"
+		| "clip"
+		| "annotation"
+		| "speed"
+		| "audio"
+		| "caption"
+		| "layout"
+		| "broll";
 }
 
 export interface AudioPeaksData {

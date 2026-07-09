@@ -112,6 +112,7 @@ export type EditorEffectSection =
 	| "extensions"
 	| "clip"
 	| "audio"
+	| "broll"
 	| "layout"
 	| `ext:${string}`;
 
@@ -580,6 +581,50 @@ export interface AudioRegion {
 	volume: number;
 	normalize?: boolean;
 	trackIndex?: number;
+}
+
+export type BRollMediaKind = "image" | "video";
+export type BRollPlacement = "full" | "screen";
+export type BRollFitMode = "cover" | "contain";
+
+export interface BRollRegion {
+	id: string;
+	startMs: number;
+	endMs: number;
+	mediaPath: string;
+	mediaKind: BRollMediaKind;
+	/** default "full" — covers the whole frame; "screen" only the screen band */
+	placement: BRollPlacement;
+	/** default "cover" — fill the target rect and crop overflow */
+	fitMode: BRollFitMode;
+	/** 0-1, default 1 */
+	opacity: number;
+	trackIndex?: number;
+}
+
+export const DEFAULT_BROLL_PLACEMENT: BRollPlacement = "full";
+export const DEFAULT_BROLL_FIT_MODE: BRollFitMode = "cover";
+export const DEFAULT_BROLL_OPACITY = 1;
+/** Default length for still-image B-roll when the file has no natural duration. */
+export const DEFAULT_BROLL_IMAGE_DURATION_MS = 3000;
+
+const BROLL_IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "webp", "gif", "bmp"]);
+
+export function inferBRollMediaKind(path: string): BRollMediaKind {
+	const extension = path.split(/[\\/]/).pop()?.split(".").pop()?.toLowerCase() ?? "";
+	return BROLL_IMAGE_EXTENSIONS.has(extension) ? "image" : "video";
+}
+
+/** Active B-roll clips at `timeMs`, lowest track first (drawn bottom → top). */
+export function getBRollAtTime(regions: BRollRegion[] | undefined, timeMs: number): BRollRegion[] {
+	if (!regions || regions.length === 0) {
+		return [];
+	}
+
+	return regions
+		.filter((region) => timeMs >= region.startMs && timeMs < region.endMs)
+		.slice()
+		.sort((left, right) => (left.trackIndex ?? 0) - (right.trackIndex ?? 0));
 }
 
 export interface CaptionCue {

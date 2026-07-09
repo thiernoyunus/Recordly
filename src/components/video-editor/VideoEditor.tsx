@@ -185,6 +185,9 @@ import {
 	type AnnotationRegion,
 	type AudioRegion,
 	type AutoCaptionSettings,
+	type BRollFitMode,
+	type BRollPlacement,
+	type BRollRegion,
 	type CaptionCue,
 	type ClipRegion,
 	type CropRegion,
@@ -198,6 +201,9 @@ import {
 	DEFAULT_ANNOTATION_STYLE,
 	DEFAULT_AUTO_CAPTION_SETTINGS,
 	DEFAULT_AUTO_ZOOM_DEPTH,
+	DEFAULT_BROLL_FIT_MODE,
+	DEFAULT_BROLL_OPACITY,
+	DEFAULT_BROLL_PLACEMENT,
 	DEFAULT_CONNECTED_ZOOM_DURATION_MS,
 	DEFAULT_CONNECTED_ZOOM_EASING,
 	DEFAULT_CONNECTED_ZOOM_GAP_MS,
@@ -218,6 +224,7 @@ import {
 	type FigureData,
 	getClipSourceEndMs,
 	getTimelineDurationMs,
+	inferBRollMediaKind,
 	type LayoutRegion,
 	type Padding,
 	mapSourceTimeToTimelineTime as resolveSourceTimeToTimelineTime,
@@ -557,6 +564,8 @@ export default function VideoEditor() {
 	const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
 	const [audioRegions, setAudioRegions] = useState<AudioRegion[]>([]);
 	const [selectedAudioId, setSelectedAudioId] = useState<string | null>(null);
+	const [brollRegions, setBrollRegions] = useState<BRollRegion[]>([]);
+	const [selectedBrollId, setSelectedBrollId] = useState<string | null>(null);
 	const [selectedCaptionId, setSelectedCaptionId] = useState<string | null>(null);
 	const [sourceAudioTrackSettingsByClip, setSourceAudioTrackSettingsByClip] = useState<
 		Record<string, SourceAudioTrackSettings>
@@ -691,6 +700,7 @@ export default function VideoEditor() {
 	const projectSaveDialogInputRef = useRef<HTMLInputElement | null>(null);
 	const nextZoomIdRef = useRef(1);
 	const nextLayoutIdRef = useRef(1);
+	const nextBrollIdRef = useRef(1);
 	const nextClipIdRef = useRef(1);
 	const nextAudioIdRef = useRef(1);
 
@@ -1732,6 +1742,7 @@ export default function VideoEditor() {
 				speedRegions: SpeedRegion[];
 				annotationRegions: AnnotationRegion[];
 				audioRegions: AudioRegion[];
+				brollRegions: BRollRegion[];
 				autoCaptions: CaptionCue[];
 				autoCaptionSettings: AutoCaptionSettings;
 				aspectRatio: AspectRatio;
@@ -1857,6 +1868,7 @@ export default function VideoEditor() {
 				speedRegions,
 				annotationRegions,
 				audioRegions,
+				brollRegions,
 				autoCaptions,
 				autoCaptionSettings,
 				aspectRatio,
@@ -1925,6 +1937,7 @@ export default function VideoEditor() {
 			speedRegions,
 			annotationRegions,
 			audioRegions,
+			brollRegions,
 			autoCaptions,
 			autoCaptionSettings,
 			aspectRatio,
@@ -1951,11 +1964,13 @@ export default function VideoEditor() {
 			speedRegions,
 			annotationRegions,
 			audioRegions,
+			brollRegions,
 			autoCaptions,
 			selectedZoomId,
 			selectedClipId,
 			selectedAnnotationId,
 			selectedAudioId,
+			selectedBrollId,
 		};
 	}, [
 		zoomRegions,
@@ -1964,11 +1979,13 @@ export default function VideoEditor() {
 		speedRegions,
 		annotationRegions,
 		audioRegions,
+		brollRegions,
 		autoCaptions,
 		selectedZoomId,
 		selectedClipId,
 		selectedAnnotationId,
 		selectedAudioId,
+		selectedBrollId,
 	]);
 
 	const applyHistorySnapshot = useCallback((snapshot: EditorHistorySnapshot) => {
@@ -1980,11 +1997,13 @@ export default function VideoEditor() {
 		setSpeedRegions(cloned.speedRegions);
 		setAnnotationRegions(cloned.annotationRegions);
 		setAudioRegions(cloned.audioRegions);
+		setBrollRegions(cloned.brollRegions);
 		setAutoCaptions(cloned.autoCaptions);
 		setSelectedZoomId(cloned.selectedZoomId);
 		setSelectedClipId(cloned.selectedClipId);
 		setSelectedAnnotationId(cloned.selectedAnnotationId);
 		setSelectedAudioId(cloned.selectedAudioId);
+		setSelectedBrollId(cloned.selectedBrollId);
 
 		nextZoomIdRef.current = deriveNextId(
 			"zoom",
@@ -2005,6 +2024,10 @@ export default function VideoEditor() {
 		nextAudioIdRef.current = deriveNextId(
 			"audio",
 			cloned.audioRegions.map((region) => region.id),
+		);
+		nextBrollIdRef.current = deriveNextId(
+			"broll",
+			cloned.brollRegions.map((region) => region.id),
 		);
 		nextAnnotationZIndexRef.current =
 			cloned.annotationRegions.reduce((max, region) => Math.max(max, region.zIndex), 0) + 1;
@@ -2130,6 +2153,7 @@ export default function VideoEditor() {
 			setSpeedRegions(normalizedEditor.speedRegions);
 			setAnnotationRegions(normalizedEditor.annotationRegions);
 			setAudioRegions(normalizedEditor.audioRegions);
+			setBrollRegions(normalizedEditor.brollRegions);
 			setSourceAudioTrackSettingsByClip(
 				normalizedEditor.sourceAudioTrackSettingsByClip ?? {},
 			);
@@ -2153,6 +2177,7 @@ export default function VideoEditor() {
 			setSelectedClipId(null);
 			setSelectedAnnotationId(null);
 			setSelectedAudioId(null);
+			setSelectedBrollId(null);
 			setSelectedLayoutId(null);
 
 			nextZoomIdRef.current = deriveNextId(
@@ -2170,6 +2195,10 @@ export default function VideoEditor() {
 			nextAudioIdRef.current = deriveNextId(
 				"audio",
 				normalizedEditor.audioRegions.map((region) => region.id),
+			);
+			nextBrollIdRef.current = deriveNextId(
+				"broll",
+				normalizedEditor.brollRegions.map((region) => region.id),
 			);
 			nextAnnotationIdRef.current = deriveNextId(
 				"annotation",
@@ -2314,6 +2343,7 @@ export default function VideoEditor() {
 		setSpeedRegions([]);
 		setAnnotationRegions([]);
 		setAudioRegions([]);
+		setBrollRegions([]);
 		setCursorTelemetry([]);
 		setCursorTelemetrySourcePath(null);
 		setSourceAudioTrackSettingsByClip({});
@@ -2325,11 +2355,13 @@ export default function VideoEditor() {
 		setSelectedClipId(null);
 		setSelectedAnnotationId(null);
 		setSelectedAudioId(null);
+		setSelectedBrollId(null);
 		setSelectedLayoutId(null);
 		nextZoomIdRef.current = 1;
 		nextLayoutIdRef.current = 1;
 		nextClipIdRef.current = 1;
 		nextAudioIdRef.current = 1;
+		nextBrollIdRef.current = 1;
 		nextAnnotationIdRef.current = 1;
 		nextAnnotationZIndexRef.current = 1;
 		pendingFreshRecordingAutoSuggestTelemetryCountRef.current = 0;
@@ -3668,9 +3700,10 @@ export default function VideoEditor() {
 		const video = playback?.video;
 		if (!playback || !video) return;
 
-		audio.playSourceAudioPreview();
+		// Source-audio sidecars are started by the sync effect once the video
+		// clock actually advances; starting them here gave audio a head start.
 		playback.play().catch((err) => console.error("Video play failed:", err));
-	}, [audio.playSourceAudioPreview, getActivePlayback]);
+	}, [getActivePlayback]);
 
 	function togglePlayPause() {
 		const playback = getActivePlayback();
@@ -4380,6 +4413,9 @@ export default function VideoEditor() {
 				setAudioRegions((prev) =>
 					prev.filter((region) => region.endMs <= startMs || region.startMs >= endMs),
 				);
+				setBrollRegions((prev) =>
+					prev.filter((region) => region.endMs <= startMs || region.startMs >= endMs),
+				);
 				setLayoutRegions((prev) =>
 					prev.filter((region) => region.endMs <= startMs || region.startMs >= endMs),
 				);
@@ -4398,6 +4434,7 @@ export default function VideoEditor() {
 			setSelectedAnnotationId(null);
 			setSelectedCaptionId(null);
 			setSelectedLayoutId(null);
+			setSelectedBrollId(null);
 			setActiveEffectSection("audio");
 		}
 	}, []);
@@ -4419,6 +4456,7 @@ export default function VideoEditor() {
 		setSelectedAnnotationId(null);
 		setSelectedCaptionId(null);
 		setSelectedLayoutId(null);
+		setSelectedBrollId(null);
 		setActiveEffectSection("audio");
 	}, []);
 
@@ -4486,6 +4524,112 @@ export default function VideoEditor() {
 			);
 		},
 		[selectedAudioId],
+	);
+
+	const handleSelectBroll = useCallback((id: string | null) => {
+		setSelectedBrollId(id);
+		if (id) {
+			setSelectedZoomId(null);
+			setSelectedAnnotationId(null);
+			setSelectedCaptionId(null);
+			setSelectedLayoutId(null);
+			setSelectedAudioId(null);
+			setSelectedClipId(null);
+			setActiveEffectSection("broll");
+		}
+	}, []);
+
+	const handleBrollAdded = useCallback((span: Span, mediaPath: string, trackIndex?: number) => {
+		const id = `broll-${nextBrollIdRef.current++}`;
+		const newRegion: BRollRegion = {
+			id,
+			startMs: Math.round(span.start),
+			endMs: Math.round(span.end),
+			mediaPath,
+			mediaKind: inferBRollMediaKind(mediaPath),
+			placement: DEFAULT_BROLL_PLACEMENT,
+			fitMode: DEFAULT_BROLL_FIT_MODE,
+			opacity: DEFAULT_BROLL_OPACITY,
+			trackIndex,
+		};
+		setBrollRegions((prev) => [...prev, newRegion]);
+		setSelectedBrollId(id);
+		setSelectedZoomId(null);
+		setSelectedAnnotationId(null);
+		setSelectedCaptionId(null);
+		setSelectedLayoutId(null);
+		setSelectedAudioId(null);
+		setSelectedClipId(null);
+		setActiveEffectSection("broll");
+	}, []);
+
+	const handleBrollSpanChange = useCallback((id: string, span: Span, trackIndex?: number) => {
+		const normalizedTrackIndex =
+			typeof trackIndex === "number" && Number.isFinite(trackIndex)
+				? Math.max(0, Math.floor(trackIndex))
+				: undefined;
+
+		setBrollRegions((prev) =>
+			prev.map((region) =>
+				region.id === id
+					? {
+							...region,
+							startMs: Math.round(span.start),
+							endMs: Math.round(span.end),
+							...(normalizedTrackIndex === undefined
+								? {}
+								: { trackIndex: normalizedTrackIndex }),
+						}
+					: region,
+			),
+		);
+	}, []);
+
+	const handleBrollDelete = useCallback(
+		(id: string) => {
+			setBrollRegions((prev) => prev.filter((region) => region.id !== id));
+			if (selectedBrollId === id) {
+				setSelectedBrollId(null);
+			}
+		},
+		[selectedBrollId],
+	);
+
+	const handleBrollPlacementChange = useCallback(
+		(placement: BRollPlacement) => {
+			if (!selectedBrollId) return;
+			setBrollRegions((prev) =>
+				prev.map((region) =>
+					region.id === selectedBrollId ? { ...region, placement } : region,
+				),
+			);
+		},
+		[selectedBrollId],
+	);
+
+	const handleBrollFitModeChange = useCallback(
+		(fitMode: BRollFitMode) => {
+			if (!selectedBrollId) return;
+			setBrollRegions((prev) =>
+				prev.map((region) =>
+					region.id === selectedBrollId ? { ...region, fitMode } : region,
+				),
+			);
+		},
+		[selectedBrollId],
+	);
+
+	const handleBrollOpacityChange = useCallback(
+		(opacity: number) => {
+			if (!selectedBrollId || !Number.isFinite(opacity)) return;
+			const nextOpacity = Math.max(0, Math.min(1, opacity));
+			setBrollRegions((prev) =>
+				prev.map((region) =>
+					region.id === selectedBrollId ? { ...region, opacity: nextOpacity } : region,
+				),
+			);
+		},
+		[selectedBrollId],
 	);
 
 	const handleAnnotationAdded = useCallback((span: Span, trackIndex = 0) => {
@@ -4722,6 +4866,12 @@ export default function VideoEditor() {
 	}, [selectedAudioId, audioRegions]);
 
 	useEffect(() => {
+		if (selectedBrollId && !brollRegions.some((region) => region.id === selectedBrollId)) {
+			setSelectedBrollId(null);
+		}
+	}, [selectedBrollId, brollRegions]);
+
+	useEffect(() => {
 		if (selectedCaptionId && !autoCaptions.some((cue) => cue.id === selectedCaptionId)) {
 			setSelectedCaptionId(null);
 		}
@@ -4840,6 +4990,7 @@ export default function VideoEditor() {
 							resolvedWebcamVideoUrl ??
 							(webcam.sourcePath ? toFileUrl(webcam.sourcePath) : null),
 						annotationRegions,
+						brollRegions,
 						autoCaptions,
 						autoCaptionSettings,
 						zoomRegions: effectiveZoomRegions,
@@ -5052,6 +5203,7 @@ export default function VideoEditor() {
 						cursorSway,
 						frame,
 						audioRegions,
+						brollRegions,
 						clipRegions,
 						sourceAudioFallbackPaths: audio.sourceAudioFallbackPaths,
 						sourceAudioFallbackStartDelayMsByPath:
@@ -5318,6 +5470,7 @@ export default function VideoEditor() {
 			cursorClickBounceDuration,
 			cursorSway,
 			audioRegions,
+			brollRegions,
 			clipRegions,
 			audio.sourceAudioFallbackPaths,
 			audio.sourceAudioFallbackStartDelayMsByPath,
@@ -5763,6 +5916,7 @@ export default function VideoEditor() {
 			trimRegions={trimRegions}
 			speedRegions={effectiveSpeedRegions}
 			annotationRegions={annotationRegions}
+			brollRegions={brollRegions}
 			autoCaptions={autoCaptions}
 			autoCaptionSettings={autoCaptionSettings}
 			onEditAutoCaption={handleSaveAutoCaptionEdit}
@@ -6606,6 +6760,17 @@ export default function VideoEditor() {
 								onAudioVolumeChange={handleAudioVolumeChange}
 								onAudioNormalizeChange={handleAudioNormalizeChange}
 								onAudioDelete={handleAudioDelete}
+								selectedBrollId={selectedBrollId}
+								selectedBroll={
+									selectedBrollId
+										? (brollRegions.find((r) => r.id === selectedBrollId) ??
+											null)
+										: null
+								}
+								onBrollPlacementChange={handleBrollPlacementChange}
+								onBrollFitModeChange={handleBrollFitModeChange}
+								onBrollOpacityChange={handleBrollOpacityChange}
+								onBrollDelete={handleBrollDelete}
 								shadowIntensity={shadowIntensity}
 								onShadowChange={setShadowIntensity}
 								backgroundBlur={backgroundBlur}
@@ -6898,6 +7063,23 @@ export default function VideoEditor() {
 										>
 											{t("timeline.audio.label")}
 										</DropdownMenuItem>
+										<DropdownMenuItem
+											onClick={() => {
+												const nextTrackIndex =
+													brollRegions.length > 0
+														? Math.max(
+																...brollRegions.map(
+																	(region) =>
+																		region.trackIndex ?? 0,
+																),
+															) + 1
+														: 0;
+												timelineRef.current?.addBroll(nextTrackIndex);
+											}}
+											className="text-muted-foreground hover:text-foreground hover:bg-foreground/10 cursor-pointer"
+										>
+											{t("timeline.broll.label", "B-roll")}
+										</DropdownMenuItem>
 										{(previewAspectRatioValue < 1 ||
 											layoutRegions.length > 0) && (
 											<DropdownMenuItem
@@ -7072,6 +7254,12 @@ export default function VideoEditor() {
 						onAudioDelete={handleAudioDelete}
 						selectedAudioId={selectedAudioId}
 						onSelectAudio={handleSelectAudio}
+						brollRegions={brollRegions}
+						onBrollAdded={handleBrollAdded}
+						onBrollSpanChange={handleBrollSpanChange}
+						onBrollDelete={handleBrollDelete}
+						selectedBrollId={selectedBrollId}
+						onSelectBroll={handleSelectBroll}
 						layoutRegions={layoutRegions}
 						onLayoutAdded={handleLayoutAdded}
 						onLayoutSpanChange={handleLayoutSpanChange}

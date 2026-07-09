@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import { deriveNextId } from "./projectPersistence";
 
 import {
+	type BRollRegion,
 	extendAutoFullTrackClip,
 	findClipAtTimelineTime,
+	getBRollAtTime,
 	getLayoutAtTime,
 	getTimelineDurationMs,
+	inferBRollMediaKind,
 	mapSourceTimeToTimelineTime,
 	mapTimelineTimeToSourceTime,
 	trimsToClips,
@@ -36,6 +39,62 @@ describe("getLayoutAtTime", () => {
 	it("falls back to the base layout for empty or missing regions", () => {
 		expect(getLayoutAtTime([], baseLayout, 150)).toBe(baseLayout);
 		expect(getLayoutAtTime(undefined, baseLayout, 150)).toBe(baseLayout);
+	});
+});
+
+describe("inferBRollMediaKind", () => {
+	it("classifies common image extensions as image", () => {
+		expect(inferBRollMediaKind("/tmp/shot.PNG")).toBe("image");
+		expect(inferBRollMediaKind("C:\\media\\photo.jpeg")).toBe("image");
+		expect(inferBRollMediaKind("clip.webp")).toBe("image");
+	});
+
+	it("treats everything else as video", () => {
+		expect(inferBRollMediaKind("/tmp/clip.mp4")).toBe("video");
+		expect(inferBRollMediaKind("broll.mov")).toBe("video");
+		expect(inferBRollMediaKind("no-extension")).toBe("video");
+	});
+});
+
+describe("getBRollAtTime", () => {
+	const regions: BRollRegion[] = [
+		{
+			id: "b1",
+			startMs: 0,
+			endMs: 3000,
+			mediaPath: "/a.png",
+			mediaKind: "image",
+			placement: "full",
+			fitMode: "cover",
+			opacity: 1,
+			trackIndex: 1,
+		},
+		{
+			id: "b2",
+			startMs: 1000,
+			endMs: 4000,
+			mediaPath: "/b.mp4",
+			mediaKind: "video",
+			placement: "screen",
+			fitMode: "contain",
+			opacity: 0.8,
+			trackIndex: 0,
+		},
+	];
+
+	it("returns active regions sorted by trackIndex", () => {
+		const active = getBRollAtTime(regions, 1500);
+		expect(active.map((r) => r.id)).toEqual(["b2", "b1"]);
+	});
+
+	it("treats end as exclusive", () => {
+		expect(getBRollAtTime(regions, 3000).map((r) => r.id)).toEqual(["b2"]);
+		expect(getBRollAtTime(regions, 4000)).toEqual([]);
+	});
+
+	it("returns empty for missing regions", () => {
+		expect(getBRollAtTime(undefined, 100)).toEqual([]);
+		expect(getBRollAtTime([], 100)).toEqual([]);
 	});
 });
 

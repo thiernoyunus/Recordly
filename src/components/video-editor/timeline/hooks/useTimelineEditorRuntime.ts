@@ -4,6 +4,7 @@ import { useCallback, useImperativeHandle } from "react";
 import type {
 	AnnotationRegion,
 	AudioRegion,
+	BRollRegion,
 	CaptionCue,
 	ClipRegion,
 	CursorTelemetryPoint,
@@ -16,6 +17,7 @@ import type {
 import type { TimelineShortcutBindings } from "../core/timelineTypes";
 import type { TimelineEditorHandle } from "../TimelineEditor";
 import { useTimelineAudioActions } from "./actions/useTimelineAudioActions";
+import { useTimelineBrollActions } from "./actions/useTimelineBrollActions";
 import { useTimelineCaptionActions } from "./actions/useTimelineCaptionActions";
 import { useTimelineLayoutActions } from "./actions/useTimelineLayoutActions";
 import { useTimelineZoomActions } from "./actions/useTimelineZoomActions";
@@ -63,6 +65,12 @@ interface UseTimelineEditorRuntimeParams {
 	onAudioDelete?: (id: string) => void;
 	selectedAudioId?: string | null;
 	onSelectAudio?: (id: string | null) => void;
+	brollRegions?: BRollRegion[];
+	onBrollAdded?: (span: Span, mediaPath: string, trackIndex?: number) => void;
+	onBrollSpanChange?: (id: string, span: Span, trackIndex?: number) => void;
+	onBrollDelete?: (id: string) => void;
+	selectedBrollId?: string | null;
+	onSelectBroll?: (id: string | null) => void;
 	captionCues: CaptionCue[];
 	onCaptionSpanChange?: (id: string, span: Span) => void;
 	onCaptionDelete?: (id: string) => void;
@@ -119,6 +127,12 @@ export function useTimelineEditorRuntime({
 	onAudioDelete,
 	selectedAudioId,
 	onSelectAudio,
+	brollRegions = [],
+	onBrollAdded,
+	onBrollSpanChange,
+	onBrollDelete,
+	selectedBrollId,
+	onSelectBroll,
 	captionCues,
 	onCaptionSpanChange,
 	onCaptionDelete,
@@ -150,6 +164,7 @@ export function useTimelineEditorRuntime({
 		deleteSelectedClip,
 		deleteSelectedAnnotation,
 		deleteSelectedAudio,
+		deleteSelectedBroll,
 		deleteSelectedCaption,
 		deleteSelectedLayout,
 		clearSelectedBlocks,
@@ -157,6 +172,7 @@ export function useTimelineEditorRuntime({
 		handleSelectClip,
 		handleSelectAnnotation,
 		handleSelectAudio,
+		handleSelectBroll,
 		handleSelectCaption,
 		handleSelectLayout,
 		cycleAnnotationsAtCurrentTime,
@@ -167,23 +183,27 @@ export function useTimelineEditorRuntime({
 		clipRegions,
 		annotationRegions,
 		audioRegions,
+		brollRegions,
 		layoutRegions,
 		selectedZoomId,
 		selectedClipId,
 		selectedAnnotationId,
 		selectedAudioId,
+		selectedBrollId,
 		selectedCaptionId,
 		selectedLayoutId,
 		onZoomDelete,
 		onClipDelete,
 		onAnnotationDelete,
 		onAudioDelete,
+		onBrollDelete,
 		onCaptionDelete,
 		onLayoutDelete,
 		onSelectZoom,
 		onSelectClip,
 		onSelectAnnotation,
 		onSelectAudio,
+		onSelectBroll,
 		onSelectCaption,
 		onSelectLayout,
 	});
@@ -195,11 +215,13 @@ export function useTimelineEditorRuntime({
 		trimRegions,
 		speedRegions,
 		audioRegions,
+		brollRegions,
 		layoutRegions,
 		onZoomSpanChange,
 		onTrimSpanChange,
 		onSpeedSpanChange,
 		onAudioSpanChange,
+		onBrollSpanChange,
 		onLayoutSpanChange,
 	});
 
@@ -216,6 +238,7 @@ export function useTimelineEditorRuntime({
 		annotationRegions,
 		speedRegions,
 		audioRegions,
+		brollRegions,
 		captionCues,
 		layoutRegions,
 		onZoomSpanChange,
@@ -224,6 +247,7 @@ export function useTimelineEditorRuntime({
 		onAnnotationSpanChange,
 		onSpeedSpanChange,
 		onAudioSpanChange,
+		onBrollSpanChange,
 		onCaptionSpanChange,
 		onLayoutSpanChange,
 	});
@@ -271,6 +295,12 @@ export function useTimelineEditorRuntime({
 		onAudioAdded,
 	});
 
+	const { handleAddBroll } = useTimelineBrollActions({
+		timeline: { videoDuration, totalMs, currentTimeMs },
+		regions: { broll: brollRegions },
+		onBrollAdded,
+	});
+
 	const handleAddAnnotation = useCallback(
 		(trackIndex = 0) => {
 			if (!videoDuration || videoDuration === 0 || totalMs === 0 || !onAnnotationAdded) {
@@ -302,6 +332,7 @@ export function useTimelineEditorRuntime({
 		selectedClipId,
 		selectedAnnotationId,
 		selectedAudioId,
+		selectedBrollId,
 		selectedCaptionId,
 		selectedLayoutId,
 		selectAllBlocksActive,
@@ -314,6 +345,7 @@ export function useTimelineEditorRuntime({
 		deleteSelectedClip,
 		deleteSelectedAnnotation,
 		deleteSelectedAudio,
+		deleteSelectedBroll,
 		deleteSelectedCaption,
 		deleteSelectedLayout,
 		cycleAnnotationsAtCurrentTime,
@@ -327,12 +359,14 @@ export function useTimelineEditorRuntime({
 			splitClip: handleSplitClip,
 			addAnnotation: handleAddAnnotation,
 			addAudio: handleAddAudio,
+			addBroll: handleAddBroll,
 			addLayout: handleAddLayout,
 			keyframes,
 		}),
 		[
 			handleAddAnnotation,
 			handleAddAudio,
+			handleAddBroll,
 			handleAddZoom,
 			handleSuggestZooms,
 			handleSplitClip,
@@ -353,6 +387,7 @@ export function useTimelineEditorRuntime({
 		handleSelectClip,
 		handleSelectAnnotation,
 		handleSelectAudio,
+		handleSelectBroll,
 		handleSelectCaption,
 		handleSelectLayout,
 		hasOverlap,
@@ -371,6 +406,7 @@ export function useTimelineEditorRuntime({
 		handleSuggestZooms,
 		handleSplitClip,
 		handleAddAudio,
+		handleAddBroll,
 		handleAddAnnotation,
 		handleAddLayout,
 	};

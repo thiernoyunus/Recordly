@@ -32,6 +32,36 @@ export function getBrowserMicSidecarFilters(profile?: string | null) {
 	return BROWSER_MIC_SIDECAR_FILTERS;
 }
 
+// Native macOS mic sidecars can arrive heavily attenuated when Apple's voice
+// processing is engaged during capture. We measure the file's true peak and
+// apply a plain makeup gain only when it is clearly too quiet, so healthy
+// recordings are never re-encoded.
+export const MAC_NATIVE_MIC_BOOST_TRIGGER_PEAK_DB = -12;
+export const MAC_NATIVE_MIC_BOOST_TARGET_PEAK_DB = -3;
+export const MAC_NATIVE_MIC_BOOST_MAX_DB = 30;
+
+export function parseMaxVolumeDb(ffmpegVolumedetectOutput: string): number | null {
+	const match = /max_volume:\s*(-?\d+(?:\.\d+)?)\s*dB/.exec(ffmpegVolumedetectOutput);
+	if (!match) {
+		return null;
+	}
+
+	const value = Number(match[1]);
+	return Number.isFinite(value) ? value : null;
+}
+
+export function computeMacNativeMicBoostDb(maxVolumeDb: number | null): number {
+	if (maxVolumeDb === null || !Number.isFinite(maxVolumeDb)) {
+		return 0;
+	}
+
+	if (maxVolumeDb >= MAC_NATIVE_MIC_BOOST_TRIGGER_PEAK_DB) {
+		return 0;
+	}
+
+	return Math.min(MAC_NATIVE_MIC_BOOST_TARGET_PEAK_DB - maxVolumeDb, MAC_NATIVE_MIC_BOOST_MAX_DB);
+}
+
 export const RECORDING_AUDIO_SIDECAR_DEBUG_ENV = "RECORDLY_KEEP_RECORDING_AUDIO_SIDECARS"; // not used yet, because we need to have seperate audio files for system and mic for each recording
 
 export function shouldKeepRecordingAudioSidecars(env: NodeJS.ProcessEnv = process.env) {

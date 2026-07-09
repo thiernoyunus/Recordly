@@ -1,10 +1,10 @@
 import React, { useCallback, useMemo } from "react";
 import {
-	SOURCE_AUDIO_NORMALIZE_GAIN,
+	resolveSourceAudioTrackGain,
 	type SourceAudioTrackSettings,
 } from "@/components/video-editor/audio/audioTypes";
-import { useSourceAudioTrackSettings } from "./useSourceAudioTrackSettings";
 import { getSourceTrackIdFromPath } from "@/lib/exporter/audioRoutingEngine";
+import { useSourceAudioTrackSettings } from "./useSourceAudioTrackSettings";
 
 interface UseClipAudioSettingsControllerParams {
 	selectedClipId: string | null;
@@ -62,8 +62,7 @@ export function useClipAudioSettingsController({
 			volume: 1,
 			normalize: false,
 		};
-		const normalizeGain = settings.normalize ? SOURCE_AUDIO_NORMALIZE_GAIN : 1;
-		return Math.max(0, Math.min(1, settings.volume * normalizeGain));
+		return resolveSourceAudioTrackGain(settings);
 	}, [embeddedTrackId, previewSourceAudioTrackSettings]);
 
 	const getSourceTrackPreviewGain = useCallback(
@@ -73,8 +72,7 @@ export function useClipAudioSettingsController({
 				volume: 1,
 				normalize: false,
 			};
-			const normalizeGain = settings.normalize ? SOURCE_AUDIO_NORMALIZE_GAIN : 1;
-			return Math.max(0, Math.min(1, settings.volume * normalizeGain));
+			return resolveSourceAudioTrackGain(settings);
 		},
 		[previewSourceAudioTrackSettings],
 	);

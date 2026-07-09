@@ -9,23 +9,27 @@ interface UseTimelineSelectionParams {
 	clipRegions: TimelineRegion[];
 	annotationRegions: (TimelineRegion & { zIndex: number })[];
 	audioRegions: TimelineRegion[];
+	brollRegions?: TimelineRegion[];
 	layoutRegions?: TimelineRegion[];
 	selectedZoomId: string | null;
 	selectedClipId?: string | null;
 	selectedAnnotationId?: string | null;
 	selectedAudioId?: string | null;
+	selectedBrollId?: string | null;
 	selectedCaptionId?: string | null;
 	selectedLayoutId?: string | null;
 	onZoomDelete: (id: string) => void;
 	onClipDelete?: (id: string) => void;
 	onAnnotationDelete?: (id: string) => void;
 	onAudioDelete?: (id: string) => void;
+	onBrollDelete?: (id: string) => void;
 	onCaptionDelete?: (id: string) => void;
 	onLayoutDelete?: (id: string) => void;
 	onSelectZoom: (id: string | null) => void;
 	onSelectClip?: (id: string | null) => void;
 	onSelectAnnotation?: (id: string | null) => void;
 	onSelectAudio?: (id: string | null) => void;
+	onSelectBroll?: (id: string | null) => void;
 	onSelectCaption?: (id: string | null) => void;
 	onSelectLayout?: (id: string | null) => void;
 }
@@ -39,18 +43,21 @@ export function useTimelineSelection({
 	selectedClipId,
 	selectedAnnotationId,
 	selectedAudioId,
+	selectedBrollId,
 	selectedCaptionId,
 	selectedLayoutId,
 	onZoomDelete,
 	onClipDelete,
 	onAnnotationDelete,
 	onAudioDelete,
+	onBrollDelete,
 	onCaptionDelete,
 	onLayoutDelete,
 	onSelectZoom,
 	onSelectClip,
 	onSelectAnnotation,
 	onSelectAudio,
+	onSelectBroll,
 	onSelectCaption,
 	onSelectLayout,
 }: UseTimelineSelectionParams) {
@@ -96,6 +103,7 @@ export function useTimelineSelection({
 		onSelectClip?.(null);
 		onSelectAnnotation?.(null);
 		onSelectAudio?.(null);
+		onSelectBroll?.(null);
 		onSelectCaption?.(null);
 		onSelectLayout?.(null);
 		setSelectAllBlocksActive(false);
@@ -108,6 +116,7 @@ export function useTimelineSelection({
 		onSelectClip,
 		onSelectAnnotation,
 		onSelectAudio,
+		onSelectBroll,
 		onSelectCaption,
 		onSelectLayout,
 	]);
@@ -130,6 +139,12 @@ export function useTimelineSelection({
 		onSelectAudio(null);
 	}, [selectedAudioId, onAudioDelete, onSelectAudio]);
 
+	const deleteSelectedBroll = useCallback(() => {
+		if (!selectedBrollId || !onBrollDelete || !onSelectBroll) return;
+		onBrollDelete(selectedBrollId);
+		onSelectBroll(null);
+	}, [selectedBrollId, onBrollDelete, onSelectBroll]);
+
 	const deleteSelectedCaption = useCallback(() => {
 		if (!selectedCaptionId || !onCaptionDelete) return;
 		onCaptionDelete(selectedCaptionId);
@@ -147,6 +162,7 @@ export function useTimelineSelection({
 		onSelectClip?.(null);
 		onSelectAnnotation?.(null);
 		onSelectAudio?.(null);
+		onSelectBroll?.(null);
 		onSelectCaption?.(null);
 		onSelectLayout?.(null);
 		setSelectAllBlocksActive(false);
@@ -155,6 +171,7 @@ export function useTimelineSelection({
 		onSelectClip,
 		onSelectAnnotation,
 		onSelectAudio,
+		onSelectBroll,
 		onSelectCaption,
 		onSelectLayout,
 	]);
@@ -164,6 +181,7 @@ export function useTimelineSelection({
 		onSelectClip?.(null);
 		onSelectAnnotation?.(null);
 		onSelectAudio?.(null);
+		onSelectBroll?.(null);
 		onSelectCaption?.(null);
 		onSelectLayout?.(null);
 		setSelectedKeyframeId(null);
@@ -173,6 +191,7 @@ export function useTimelineSelection({
 		onSelectClip,
 		onSelectAnnotation,
 		onSelectAudio,
+		onSelectBroll,
 		onSelectCaption,
 		onSelectLayout,
 	]);
@@ -207,6 +226,14 @@ export function useTimelineSelection({
 			onSelectAudio?.(id);
 		},
 		[onSelectAudio],
+	);
+
+	const handleSelectBroll = useCallback(
+		(id: string | null) => {
+			setSelectAllBlocksActive(false);
+			onSelectBroll?.(id);
+		},
+		[onSelectBroll],
 	);
 
 	const handleSelectCaption = useCallback(
@@ -264,6 +291,7 @@ export function useTimelineSelection({
 		deleteSelectedClip,
 		deleteSelectedAnnotation,
 		deleteSelectedAudio,
+		deleteSelectedBroll,
 		deleteSelectedCaption,
 		deleteSelectedLayout,
 		clearSelectedBlocks,
@@ -271,6 +299,7 @@ export function useTimelineSelection({
 		handleSelectClip,
 		handleSelectAnnotation,
 		handleSelectAudio,
+		handleSelectBroll,
 		handleSelectCaption,
 		handleSelectLayout,
 		cycleAnnotationsAtCurrentTime,

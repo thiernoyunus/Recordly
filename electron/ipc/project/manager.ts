@@ -459,6 +459,7 @@ export async function loadProjectFromPath(projectPath: string) {
 	const editorObj = projectObj?.editor as Record<string, unknown> | undefined;
 	const audioTracks = editorObj?.audioTracks as { sourcePath?: unknown }[] | undefined;
 	const audioRegions = editorObj?.audioRegions as { audioPath?: unknown }[] | undefined;
+	const brollRegions = editorObj?.brollRegions as { mediaPath?: unknown }[] | undefined;
 	const approvedProjectPaths: Array<string | null | undefined> = [
 		mediaSources.videoPath,
 		mediaSources.webcamPath,
@@ -474,6 +475,13 @@ export async function loadProjectFromPath(projectPath: string) {
 		for (const region of audioRegions) {
 			if (typeof region?.audioPath === "string") {
 				approvedProjectPaths.push(region.audioPath);
+			}
+		}
+	}
+	if (Array.isArray(brollRegions)) {
+		for (const region of brollRegions) {
+			if (typeof region?.mediaPath === "string") {
+				approvedProjectPaths.push(region.mediaPath);
 			}
 		}
 	}

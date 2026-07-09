@@ -112,6 +112,52 @@ export function registerCaptionHandlers() {
 		}
 	});
 
+	ipcMain.handle("open-media-file-picker", async () => {
+		try {
+			const result = await dialog.showOpenDialog({
+				title: "Select Image or Video",
+				filters: [
+					{
+						name: "Media Files",
+						extensions: [
+							...VIDEO_FILE_EXTENSIONS,
+							"png",
+							"jpg",
+							"jpeg",
+							"webp",
+							"gif",
+							"bmp",
+						],
+					},
+					{ name: "Video Files", extensions: VIDEO_FILE_EXTENSIONS },
+					{
+						name: "Images",
+						extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp"],
+					},
+					{ name: "All Files", extensions: ["*"] },
+				],
+				properties: ["openFile"],
+			});
+
+			if (result.canceled || result.filePaths.length === 0) {
+				return { success: false, canceled: true };
+			}
+
+			approveUserPath(result.filePaths[0]);
+			return {
+				success: true,
+				path: result.filePaths[0],
+			};
+		} catch (error) {
+			console.error("Failed to open media file picker:", error);
+			return {
+				success: false,
+				message: "Failed to open media file picker",
+				error: String(error),
+			};
+		}
+	});
+
 	ipcMain.handle("open-whisper-executable-picker", async () => {
 		try {
 			const result = await dialog.showOpenDialog({

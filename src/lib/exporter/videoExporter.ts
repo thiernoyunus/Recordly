@@ -2,6 +2,7 @@ import type {
 	AnnotationRegion,
 	AudioRegion,
 	AutoCaptionSettings,
+	BRollRegion,
 	CaptionCue,
 	ClipRegion,
 	CropRegion,
@@ -96,6 +97,7 @@ interface VideoExporterConfig extends ExportConfig {
 	zoomSmoothness?: number;
 	frame?: string | null;
 	audioRegions?: AudioRegion[];
+	brollRegions?: BRollRegion[];
 	clipRegions?: ClipRegion[];
 	sourceAudioFallbackPaths?: string[];
 	sourceAudioFallbackStartDelayMsByPath?: Record<string, number>;
@@ -250,6 +252,7 @@ export class VideoExporter {
 				videoWidth: videoInfo.width,
 				videoHeight: videoInfo.height,
 				annotationRegions: this.config.annotationRegions,
+				brollRegions: this.config.brollRegions,
 				autoCaptions: this.config.autoCaptions,
 				autoCaptionSettings: this.config.autoCaptionSettings,
 				speedRegions: this.config.speedRegions,

@@ -4,6 +4,7 @@ import { ZoomBlurFilter } from "pixi-filters/zoom-blur";
 import type {
 	AnnotationRegion,
 	AutoCaptionSettings,
+	BRollRegion,
 	CaptionCue,
 	CropRegion,
 	CursorClickEffectStyle,
@@ -87,6 +88,7 @@ import {
 } from "@/lib/mediaTiming";
 import { isVideoWallpaperSource } from "@/lib/wallpapers";
 import { renderAnnotations } from "./annotationRenderer";
+import { BrollMediaCache, drawBRollRegions } from "./brollRenderer";
 import { renderCaptions } from "./captionRenderer";
 import { ForwardFrameSource } from "./forwardFrameSource";
 import { resolveMediaElementSource } from "./localMediaSource";
@@ -127,6 +129,7 @@ interface FrameRenderConfig {
 	videoWidth: number;
 	videoHeight: number;
 	annotationRegions?: AnnotationRegion[];
+	brollRegions?: BRollRegion[];
 	autoCaptions?: CaptionCue[];
 	autoCaptionSettings?: AutoCaptionSettings;
 	speedRegions?: SpeedRegion[];
@@ -326,6 +329,7 @@ export class FrameRenderer {
 	private frameInsets: { top: number; right: number; bottom: number; left: number } | null = null;
 	private frameDraw: ((ctx: CanvasRenderingContext2D, w: number, h: number) => void) | null =
 		null;
+	private brollMediaCache = new BrollMediaCache();
 
 	constructor(config: FrameRenderConfig) {
 		this.config = config;
@@ -488,6 +492,7 @@ export class FrameRenderer {
 		await this.setupBackground();
 		await this.setupWebcamSource();
 		await this.setupFrame();
+		await this.brollMediaCache.preload(this.config.brollRegions);
 
 		if ((this.config.zoomMotionBlur ?? 0) > 0) {
 			this.zoomBlurFilter = new ZoomBlurFilter({ strength: 0, maxKernelSize: 13 });
@@ -1553,6 +1558,29 @@ export class FrameRenderer {
 
 			this.drawFrame(temporalSnapshot.sceneTransform);
 
+			if (this.compositeCtx && (this.config.brollRegions?.length ?? 0) > 0) {
+				const activeLayout = getLayoutAtTime(
+					this.config.layoutRegions,
+					this.config.layout ?? DEFAULT_SCENE_LAYOUT,
+					temporalSnapshot.timeMs,
+				);
+				const bands = computeSceneBandRects(
+					activeLayout,
+					this.config.width,
+					this.config.height,
+				);
+				await drawBRollRegions(
+					this.compositeCtx,
+					this.config.brollRegions,
+					temporalSnapshot.timeMs,
+					this.config.width,
+					this.config.height,
+					bands.screenRect,
+					this.layoutCache?.maskRect,
+					this.brollMediaCache,
+				);
+			}
+
 			if (
 				this.config.annotationRegions &&
 				this.config.annotationRegions.length > 0 &&
@@ -1738,6 +1766,30 @@ export class FrameRenderer {
 			x: this.animationState.x,
 			y: this.animationState.y,
 		});
+
+		// B-roll above screen/webcam composite, under annotations/captions.
+		if (this.compositeCtx && (this.config.brollRegions?.length ?? 0) > 0) {
+			const activeLayout = getLayoutAtTime(
+				this.config.layoutRegions,
+				this.config.layout ?? DEFAULT_SCENE_LAYOUT,
+				timeMs,
+			);
+			const bands = computeSceneBandRects(
+				activeLayout,
+				this.config.width,
+				this.config.height,
+			);
+			await drawBRollRegions(
+				this.compositeCtx,
+				this.config.brollRegions,
+				timeMs,
+				this.config.width,
+				this.config.height,
+				bands.screenRect,
+				this.layoutCache?.maskRect,
+				this.brollMediaCache,
+			);
+		}
 
 		// Render annotations on top if present
 		if (
@@ -2653,6 +2705,7 @@ export class FrameRenderer {
 	}
 
 	destroy(): void {
+		this.brollMediaCache.dispose();
 		if (this.videoSprite) {
 			const videoTexture = this.videoSprite.texture;
 			this.videoSprite.destroy({ texture: false, textureSource: false });

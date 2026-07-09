@@ -4,6 +4,9 @@ import {
 	getAnnotationTrackRowId,
 	getAudioTrackIndex,
 	getAudioTrackRowId,
+	getBrollTrackIndex,
+	getBrollTrackRowId,
+	isBrollTrackRowId,
 	isAnnotationTrackRowId,
 	isAudioTrackRowId,
 } from "./rows";
@@ -37,5 +40,15 @@ describe("timeline core/rows", () => {
 		expect(getAudioTrackIndex("row-audio-foo")).toBe(0);
 		expect(getAudioTrackIndex("other")).toBe(0);
 		expect(isAudioTrackRowId("row-annotation-1")).toBe(false);
+	});
+
+	it("builds and parses B-roll rows", () => {
+		expect(getBrollTrackRowId(2.4)).toBe("row-broll-2");
+		expect(getBrollTrackRowId(-1)).toBe("row-broll-0");
+		expect(getBrollTrackIndex("row-broll-5")).toBe(5);
+		expect(getBrollTrackIndex("row-broll")).toBe(0);
+		expect(isBrollTrackRowId("row-broll")).toBe(true);
+		expect(isBrollTrackRowId("row-broll-1")).toBe(true);
+		expect(isBrollTrackRowId("row-audio-1")).toBe(false);
 	});
 });

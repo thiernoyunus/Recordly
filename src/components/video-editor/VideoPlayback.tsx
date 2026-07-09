@@ -36,6 +36,7 @@ import {
 import {
 	type AnnotationRegion,
 	type AutoCaptionSettings,
+	type BRollRegion,
 	type CaptionCue,
 	type CursorClickEffectStyle,
 	type CursorStyle,
@@ -168,6 +169,7 @@ import {
 	type LayoutRegion,
 	type SceneLayoutSettings,
 } from "./types";
+import { BrollPreviewOverlay } from "./videoPlayback/BrollPreviewOverlay";
 import {
 	type CursorFollowCameraState,
 	computeCursorFollowFocus,
@@ -395,6 +397,7 @@ interface VideoPlaybackProps {
 	speedRegions?: SpeedRegion[];
 	aspectRatio: AspectRatio;
 	annotationRegions?: AnnotationRegion[];
+	brollRegions?: BRollRegion[];
 	autoCaptions?: CaptionCue[];
 	autoCaptionSettings?: AutoCaptionSettings;
 	onEditAutoCaption?: (target: CaptionEditTarget, text: string) => void;
@@ -492,6 +495,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			speedRegions = [],
 			aspectRatio,
 			annotationRegions = [],
+			brollRegions = [],
 			autoCaptions = [],
 			autoCaptionSettings,
 			onEditAutoCaption,
@@ -560,6 +564,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				width: 0,
 				height: 0,
 			});
+		const [brollStageSize, setBrollStageSize] = useState({ width: 0, height: 0 });
 
 		useEffect(() => {
 			let framesSignature = getRegisteredFramesSignature();
@@ -1393,6 +1398,12 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 
 			if (result) {
 				stageSizeRef.current = result.stageSize;
+				setBrollStageSize((prev) =>
+					Math.abs(prev.width - result.stageSize.width) < 0.5 &&
+					Math.abs(prev.height - result.stageSize.height) < 0.5
+						? prev
+						: result.stageSize,
+				);
 				syncPreviewMotionBlurQuality();
 				videoSizeRef.current = result.videoSize;
 				baseScaleRef.current = result.baseScale;
@@ -3472,12 +3483,27 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 							className="absolute rounded-md border border-[#2563EB]/80 bg-[#2563EB]/20 shadow-[0_0_0_1px_rgba(37,99,235,0.35)]"
 							style={{ display: "none", pointerEvents: "none" }}
 						/>
+						{brollRegions.length > 0 ? (
+							<BrollPreviewOverlay
+								regions={brollRegions}
+								currentTimeSec={currentTime}
+								isPlaying={isPlaying}
+								layout={layout}
+								layoutRegions={layoutRegions}
+								stageWidth={brollStageSize.width}
+								stageHeight={brollStageSize.height}
+								maskRect={annotationRecordingRect}
+								zIndex={2}
+							/>
+						) : null}
 						{webcam && webcamVideoPath ? (
 							<div
 								ref={webcamBubbleRef}
 								className="absolute"
 								style={{
 									display: webcam.enabled ? "block" : "none",
+									// Webcam stays above screen-placed B-roll; full B-roll covers it via higher z later if needed.
+									zIndex: 3,
 									pointerEvents: webcamBubbleDraggable ? "auto" : "none",
 									cursor: webcamBubbleDraggable ? "grab" : undefined,
 								}}
@@ -3522,6 +3548,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 								className="absolute inset-x-0 flex justify-center"
 								style={{
 									bottom: `${autoCaptionSettings.bottomOffset}%`,
+									// Keep captions above full-frame B-roll (zIndex 4) and webcam (3).
+									zIndex: 5,
 									pointerEvents: onEditAutoCaption ? "auto" : "none",
 								}}
 							>

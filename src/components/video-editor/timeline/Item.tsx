@@ -1,6 +1,7 @@
 import {
 	FilmSlate as Film,
 	Gauge,
+	Image as ImageIcon,
 	SquaresFour as LayoutIcon,
 	ChatCircle as MessageSquare,
 	MusicNotes as Music,
@@ -37,7 +38,16 @@ interface ItemProps {
 	waveformNormalize?: boolean;
 	muted?: boolean;
 	layoutMode?: "default" | "split" | "camera" | "screen";
-	variant?: "zoom" | "trim" | "clip" | "annotation" | "speed" | "audio" | "caption" | "layout";
+	variant?:
+		| "zoom"
+		| "trim"
+		| "clip"
+		| "annotation"
+		| "speed"
+		| "audio"
+		| "caption"
+		| "layout"
+		| "broll";
 	isLoading?: boolean;
 	loadingLabel?: string;
 }
@@ -137,6 +147,7 @@ export default function Item({
 	const isAudio = variant === "audio";
 	const isCaption = variant === "caption";
 	const isLayout = variant === "layout";
+	const isBroll = variant === "broll";
 	const showAudioWaveform = isAudio && Boolean(waveformPeaks);
 	const clipSpeedLabel = isClip ? formatClipSpeedLabel(speedValue ?? 1) : null;
 
@@ -150,11 +161,13 @@ export default function Item({
 					? glassStyles.glassAmber
 					: isAudio
 						? glassStyles.glassDarkGreen
-						: isCaption
-							? glassStyles.glassCaption
-							: isLayout
-								? glassStyles.glassTeal
-								: glassStyles.glassYellow;
+						: isBroll
+							? glassStyles.glassOrange
+							: isCaption
+								? glassStyles.glassCaption
+								: isLayout
+									? glassStyles.glassTeal
+									: glassStyles.glassYellow;
 
 	const MIN_ITEM_PX = 6;
 	const handleSelect = () => {
@@ -268,6 +281,13 @@ export default function Item({
 							) : isAudio ? (
 								<>
 									<Music className="w-3.5 h-3.5 shrink-0" />
+									<span className="text-[11px] font-semibold tracking-tight truncate max-w-full">
+										{children}
+									</span>
+								</>
+							) : isBroll ? (
+								<>
+									<ImageIcon className="w-3.5 h-3.5 shrink-0" />
 									<span className="text-[11px] font-semibold tracking-tight truncate max-w-full">
 										{children}
 									</span>
