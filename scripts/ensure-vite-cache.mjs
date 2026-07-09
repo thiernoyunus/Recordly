@@ -23,7 +23,8 @@ const root = path.resolve(__dirname, "..");
 const viteCacheDir = path.join(root, "node_modules", ".vite");
 const depsDir = path.join(viteCacheDir, "deps");
 const metadataPath = path.join(depsDir, "_metadata.json");
-const stampPath = path.join(viteCacheDir, "recordly-cache-stamp.json");
+// Stamp lives outside .vite so force-clears still remember lockfile hashes.
+const durableStampPath = path.join(root, "node_modules", ".vite-recordly-stamp.json");
 const force = process.argv.includes("--force");
 
 function log(message) {
@@ -58,7 +59,6 @@ function clearViteCache(reason) {
 function collectReferencedFiles(metadata) {
 	const files = new Set();
 
-	// optimized map: { "react": { file: "react.js", ... }, ... }
 	const optimized = metadata?.optimized;
 	if (optimized && typeof optimized === "object") {
 		for (const entry of Object.values(optimized)) {
@@ -82,7 +82,6 @@ function collectReferencedFiles(metadata) {
 		}
 	}
 
-	// chunks map (vite 5): { "chunk-ABC.js": { file: "chunk-ABC.js", ... } }
 	const chunks = metadata?.chunks;
 	if (chunks && typeof chunks === "object") {
 		for (const [key, entry] of Object.entries(chunks)) {
@@ -95,13 +94,11 @@ function collectReferencedFiles(metadata) {
 		}
 	}
 
-	// depInfo / browserHash only — no file paths
 	return [...files];
 }
 
 function validateDepsCache() {
 	if (!existsSync(metadataPath)) {
-		// Fresh install / first run — nothing to validate.
 		return { ok: true, reason: "no-metadata" };
 	}
 
@@ -133,62 +130,8 @@ function validateDepsCache() {
 	return { ok: true, reason: "healthy" };
 }
 
-function lockfileChanged() {
-	const lockHash =
-		hashFile(path.join(root, "package-lock.json")) ??
-		hashFile(path.join(root, "pnpm-lock.yaml")) ??
-		hashFile(path.join(root, "yarn.lock"));
-	const pkgHash = hashFile(path.join(root, "package.json"));
-	const stampRaw = readText(stampPath);
-	let previous = null;
-	if (stampRaw) {
-		try {
-			previous = JSON.parse(stampRaw);
-		} catch {
-			previous = null;
-		}
-	}
-
-	const next = {
-		packageJson: pkgHash,
-		lockfile: lockHash,
-		updatedAt: new Date().toISOString(),
-	};
-
-	if (
-		previous &&
-		previous.packageJson === next.packageJson &&
-		previous.lockfile === next.lockfile
-	) {
-		return { changed: false, next };
-	}
-
-	return { changed: Boolean(previous), next, previous };
-}
-
-function writeStamp(stamp) {
-	try {
-		// Ensure parent exists (after clear it may not)
-		const dir = path.dirname(stampPath);
-		if (!existsSync(dir)) {
-			// stamp is under .vite which may have been deleted — recreate lightly
-			writeFileSync(
-				path.join(root, "node_modules", ".vite-recordly-stamp.json"),
-				JSON.stringify(stamp, null, 2),
-			);
-			return;
-		}
-		writeFileSync(stampPath, JSON.stringify(stamp, null, 2));
-	} catch {
-		// Non-fatal: validation still ran.
-	}
-}
-
-// Prefer a stamp outside .vite so force-clears still remember lockfile hashes.
-const durableStampPath = path.join(root, "node_modules", ".vite-recordly-stamp.json");
-
 function readDurableStamp() {
-	const raw = readText(durableStampPath) ?? readText(stampPath);
+	const raw = readText(durableStampPath);
 	if (!raw) return null;
 	try {
 		return JSON.parse(raw);
@@ -201,30 +144,33 @@ function writeDurableStamp(stamp) {
 	try {
 		writeFileSync(durableStampPath, JSON.stringify(stamp, null, 2));
 	} catch {
-		// ignore
+		// Non-fatal.
 	}
 }
 
-function main() {
-	if (force) {
-		clearViteCache("forced");
-		const lock = lockfileChanged();
-		writeDurableStamp(lock.next);
-		return;
-	}
-
-	const previous = readDurableStamp();
+function currentStamp() {
 	const lockHash =
 		hashFile(path.join(root, "package-lock.json")) ??
 		hashFile(path.join(root, "pnpm-lock.yaml")) ??
 		hashFile(path.join(root, "yarn.lock"));
 	const pkgHash = hashFile(path.join(root, "package.json"));
-	const nextStamp = {
+	return {
 		packageJson: pkgHash,
 		lockfile: lockHash,
 		updatedAt: new Date().toISOString(),
 	};
+}
 
+function main() {
+	const nextStamp = currentStamp();
+
+	if (force) {
+		clearViteCache("forced");
+		writeDurableStamp(nextStamp);
+		return;
+	}
+
+	const previous = readDurableStamp();
 	if (
 		previous &&
 		(previous.packageJson !== nextStamp.packageJson || previous.lockfile !== nextStamp.lockfile)

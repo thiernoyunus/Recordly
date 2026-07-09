@@ -60,7 +60,7 @@ export function BrollPreviewOverlay({
 	// could never paint above the webcam sibling (z-index 3).
 	// Webcam sits at 3; captions at 5. Screen-only B-roll stays under the camera.
 	const WEBCAM_Z = 3;
-	const screenOnlyZ = Math.min(zIndex, WEBCAM_Z - 1); // default 2
+	const screenOnlyZ = Math.min(zIndex ?? 2, WEBCAM_Z - 1); // default 2
 	const fullFrameZ = WEBCAM_Z + 1; // 4 — covers camera; captions still above
 
 	return (
