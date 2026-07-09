@@ -11,6 +11,7 @@ import { fromFileUrl } from "../projectPersistence";
 import type {
 	AnnotationRegion,
 	AudioRegion,
+	BRollRegion,
 	CaptionCue,
 	ClipRegion,
 	CursorTelemetryPoint,
@@ -70,6 +71,12 @@ export interface TimelineEditorProps {
 	onAudioDelete?: (id: string) => void;
 	selectedAudioId?: string | null;
 	onSelectAudio?: (id: string | null) => void;
+	brollRegions?: BRollRegion[];
+	onBrollAdded?: (span: Span, mediaPath: string, trackIndex?: number) => void;
+	onBrollSpanChange?: (id: string, span: Span, trackIndex?: number) => void;
+	onBrollDelete?: (id: string) => void;
+	selectedBrollId?: string | null;
+	onSelectBroll?: (id: string | null) => void;
 	captionRegions?: CaptionCue[];
 	onCaptionSpanChange?: (id: string, span: Span) => void;
 	onCaptionDelete?: (id: string) => void;
@@ -116,6 +123,7 @@ export interface TimelineEditorHandle {
 	splitClip: () => void;
 	addAnnotation: (trackIndex?: number) => void;
 	addAudio: (trackIndex?: number) => Promise<void>;
+	addBroll: (trackIndex?: number) => Promise<void>;
 	addLayout: () => void;
 	keyframes: { id: string; time: number }[];
 }
@@ -160,6 +168,12 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onAudioDelete,
 			selectedAudioId,
 			onSelectAudio,
+			brollRegions = [],
+			onBrollAdded,
+			onBrollSpanChange,
+			onBrollDelete,
+			selectedBrollId,
+			onSelectBroll,
 			captionRegions = [],
 			onCaptionSpanChange,
 			onCaptionDelete,
@@ -349,6 +363,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			handleSelectClip,
 			handleSelectAnnotation,
 			handleSelectAudio,
+			handleSelectBroll,
 			handleSelectCaption,
 			handleSelectLayout,
 			hasOverlap,
@@ -400,6 +415,12 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onAudioDelete,
 			selectedAudioId,
 			onSelectAudio,
+			brollRegions,
+			onBrollAdded,
+			onBrollSpanChange,
+			onBrollDelete,
+			selectedBrollId,
+			onSelectBroll,
 			captionCues: captionRegions,
 			onCaptionSpanChange,
 			onCaptionDelete,
@@ -510,12 +531,14 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 							onSelectClip={handleSelectClip}
 							onSelectAnnotation={handleSelectAnnotation}
 							onSelectAudio={handleSelectAudio}
+							onSelectBroll={handleSelectBroll}
 							onSelectCaption={handleSelectCaption}
 							onSelectLayout={handleSelectLayout}
 							selectedZoomId={selectedZoomId}
 							selectedClipId={selectedClipId}
 							selectedAnnotationId={selectedAnnotationId}
 							selectedAudioId={selectedAudioId}
+							selectedBrollId={selectedBrollId}
 							selectedCaptionId={selectedCaptionId}
 							selectedLayoutId={selectedLayoutId}
 							showLayoutTrack={showLayoutTrack || layoutRegions.length > 0}

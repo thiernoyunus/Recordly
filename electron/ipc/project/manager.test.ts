@@ -229,4 +229,43 @@ describe("local media path policy", () => {
 		expect(result.success).toBe(true);
 		await expect(resolveApprovedLocalMediaPath(audioPath)).resolves.toBe(resolvedAudioPath);
 	});
+
+	it("approves editor brollRegions mediaPath entries when loading a project", async () => {
+		const downloadsPath = path.join(tempRoot, "Downloads");
+		const videoPath = path.join(tempPath, "recording.mp4");
+		const brollPath = path.join(downloadsPath, "overlay.png");
+		const projectPath = path.join(tempPath, "recording-broll.recordly");
+		await fs.mkdir(downloadsPath, { recursive: true });
+		await fs.writeFile(videoPath, "test-video");
+		await fs.writeFile(brollPath, "test-image");
+		await fs.writeFile(
+			projectPath,
+			JSON.stringify({
+				version: 1,
+				videoPath,
+				editor: {
+					brollRegions: [
+						{
+							id: "b1",
+							startMs: 0,
+							endMs: 3000,
+							mediaPath: brollPath,
+							mediaKind: "image",
+							placement: "full",
+							fitMode: "cover",
+							opacity: 1,
+						},
+					],
+				},
+			}),
+			"utf-8",
+		);
+
+		const { loadProjectFromPath, resolveApprovedLocalMediaPath } = await import("./manager");
+		const resolvedBrollPath = await fs.realpath(brollPath);
+
+		const result = await loadProjectFromPath(projectPath);
+		expect(result.success).toBe(true);
+		await expect(resolveApprovedLocalMediaPath(brollPath)).resolves.toBe(resolvedBrollPath);
+	});
 });

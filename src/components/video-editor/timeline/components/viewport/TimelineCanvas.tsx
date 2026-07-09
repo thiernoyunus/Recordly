@@ -27,8 +27,11 @@ import {
 	getAnnotationTrackRowId,
 	getAudioTrackIndex,
 	getAudioTrackRowId,
+	getBrollTrackIndex,
+	getBrollTrackRowId,
 	isAnnotationTrackRowId,
 	isAudioTrackRowId,
+	isBrollTrackRowId,
 } from "../../core/rows";
 import type { TimelineRenderItem } from "../../core/timelineTypes";
 import { DEFAULT_CAPTION_DURATION_MS } from "../../hooks/actions/useTimelineCaptionActions";
@@ -49,6 +52,7 @@ import PlaybackCursor from "../playhead/PlaybackCursor";
 const HINT_CLIP = "Press C to split clip";
 const HINT_ANNOTATION = "Press A to add annotation";
 const HINT_AUDIO = "Click music icon to add audio";
+const HINT_BROLL = "Add B-roll from Add Layer";
 
 interface TimelineCanvasProps {
 	items: TimelineRenderItem[];
@@ -60,6 +64,7 @@ interface TimelineCanvasProps {
 	onSelectClip?: (id: string | null) => void;
 	onSelectAnnotation?: (id: string | null) => void;
 	onSelectAudio?: (id: string | null) => void;
+	onSelectBroll?: (id: string | null) => void;
 	onSelectCaption?: (id: string | null) => void;
 	onSelectLayout?: (id: string | null) => void;
 	onAddZoomAtMs?: (startMs: number) => void;
@@ -72,6 +77,7 @@ interface TimelineCanvasProps {
 	selectedClipId?: string | null;
 	selectedAnnotationId?: string | null;
 	selectedAudioId?: string | null;
+	selectedBrollId?: string | null;
 	selectedCaptionId?: string | null;
 	selectedLayoutId?: string | null;
 	showLayoutTrack?: boolean;
@@ -370,6 +376,7 @@ interface TimelineCanvasRowsProps {
 	selectedClipId?: string | null;
 	selectedAnnotationId?: string | null;
 	selectedAudioId?: string | null;
+	selectedBrollId?: string | null;
 	selectedCaptionId?: string | null;
 	selectedLayoutId?: string | null;
 	showLayoutTrack?: boolean;
@@ -377,6 +384,7 @@ interface TimelineCanvasRowsProps {
 	onSelectClip?: (id: string | null) => void;
 	onSelectAnnotation?: (id: string | null) => void;
 	onSelectAudio?: (id: string | null) => void;
+	onSelectBroll?: (id: string | null) => void;
 	onSelectCaption?: (id: string | null) => void;
 	onSelectLayout?: (id: string | null) => void;
 	sourceAudioTracks?: SourceAudioTrackWithPeaks[];
@@ -452,6 +460,7 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 	selectedClipId,
 	selectedAnnotationId,
 	selectedAudioId,
+	selectedBrollId,
 	selectedCaptionId,
 	selectedLayoutId,
 	showLayoutTrack = false,
@@ -459,6 +468,7 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 	onSelectClip,
 	onSelectAnnotation,
 	onSelectAudio,
+	onSelectBroll,
 	onSelectCaption,
 	onSelectLayout,
 	sourceAudioTracks = [],
@@ -488,69 +498,91 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 	onCaptionRowClick,
 }: TimelineCanvasRowsProps) {
 	const hiddenIds = useMemo(() => new Set(liveHiddenItemIds ?? []), [liveHiddenItemIds]);
-	const { clipItems, zoomItems, layoutItems, captionItems, annotationRows, audioRows } =
-		useMemo(() => {
-			const nextClipItems: TimelineRenderItem[] = [];
-			const nextZoomItems: TimelineRenderItem[] = [];
-			const nextLayoutItems: TimelineRenderItem[] = [];
-			const nextCaptionItems: TimelineRenderItem[] = [];
-			const annotationBuckets = new Map<number, TimelineRenderItem[]>();
-			const audioBuckets = new Map<number, TimelineRenderItem[]>();
+	const {
+		clipItems,
+		zoomItems,
+		layoutItems,
+		captionItems,
+		annotationRows,
+		audioRows,
+		brollRows,
+	} = useMemo(() => {
+		const nextClipItems: TimelineRenderItem[] = [];
+		const nextZoomItems: TimelineRenderItem[] = [];
+		const nextLayoutItems: TimelineRenderItem[] = [];
+		const nextCaptionItems: TimelineRenderItem[] = [];
+		const annotationBuckets = new Map<number, TimelineRenderItem[]>();
+		const audioBuckets = new Map<number, TimelineRenderItem[]>();
+		const brollBuckets = new Map<number, TimelineRenderItem[]>();
 
-			for (const item of items) {
-				if (item.rowId === CLIP_ROW_ID) {
-					nextClipItems.push(item);
-					continue;
-				}
-				if (item.rowId === ZOOM_ROW_ID) {
-					nextZoomItems.push(item);
-					continue;
-				}
-				if (item.rowId === LAYOUT_ROW_ID) {
-					nextLayoutItems.push(item);
-					continue;
-				}
-				if (item.rowId === CAPTION_ROW_ID) {
-					nextCaptionItems.push(item);
-					continue;
-				}
-				if (isAnnotationTrackRowId(item.rowId)) {
-					const trackIndex = getAnnotationTrackIndex(item.rowId);
-					const bucket = annotationBuckets.get(trackIndex);
-					if (bucket) bucket.push(item);
-					else annotationBuckets.set(trackIndex, [item]);
-					continue;
-				}
-				if (isAudioTrackRowId(item.rowId)) {
-					const trackIndex = getAudioTrackIndex(item.rowId);
-					const bucket = audioBuckets.get(trackIndex);
-					if (bucket) bucket.push(item);
-					else audioBuckets.set(trackIndex, [item]);
-				}
+		for (const item of items) {
+			if (item.rowId === CLIP_ROW_ID) {
+				nextClipItems.push(item);
+				continue;
 			}
+			if (item.rowId === ZOOM_ROW_ID) {
+				nextZoomItems.push(item);
+				continue;
+			}
+			if (item.rowId === LAYOUT_ROW_ID) {
+				nextLayoutItems.push(item);
+				continue;
+			}
+			if (item.rowId === CAPTION_ROW_ID) {
+				nextCaptionItems.push(item);
+				continue;
+			}
+			if (isAnnotationTrackRowId(item.rowId)) {
+				const trackIndex = getAnnotationTrackIndex(item.rowId);
+				const bucket = annotationBuckets.get(trackIndex);
+				if (bucket) bucket.push(item);
+				else annotationBuckets.set(trackIndex, [item]);
+				continue;
+			}
+			if (isAudioTrackRowId(item.rowId)) {
+				const trackIndex = getAudioTrackIndex(item.rowId);
+				const bucket = audioBuckets.get(trackIndex);
+				if (bucket) bucket.push(item);
+				else audioBuckets.set(trackIndex, [item]);
+				continue;
+			}
+			if (isBrollTrackRowId(item.rowId)) {
+				const trackIndex = getBrollTrackIndex(item.rowId);
+				const bucket = brollBuckets.get(trackIndex);
+				if (bucket) bucket.push(item);
+				else brollBuckets.set(trackIndex, [item]);
+			}
+		}
 
-			const annotationRowsSorted = Array.from(annotationBuckets.entries())
-				.sort(([left], [right]) => left - right)
-				.map(([trackIndex, rowItems]) => ({
-					rowId: getAnnotationTrackRowId(trackIndex),
-					items: rowItems,
-				}));
-			const audioRowsSorted = Array.from(audioBuckets.entries())
-				.sort(([left], [right]) => left - right)
-				.map(([trackIndex, rowItems]) => ({
-					rowId: getAudioTrackRowId(trackIndex),
-					items: rowItems,
-				}));
+		const annotationRowsSorted = Array.from(annotationBuckets.entries())
+			.sort(([left], [right]) => left - right)
+			.map(([trackIndex, rowItems]) => ({
+				rowId: getAnnotationTrackRowId(trackIndex),
+				items: rowItems,
+			}));
+		const audioRowsSorted = Array.from(audioBuckets.entries())
+			.sort(([left], [right]) => left - right)
+			.map(([trackIndex, rowItems]) => ({
+				rowId: getAudioTrackRowId(trackIndex),
+				items: rowItems,
+			}));
+		const brollRowsSorted = Array.from(brollBuckets.entries())
+			.sort(([left], [right]) => left - right)
+			.map(([trackIndex, rowItems]) => ({
+				rowId: getBrollTrackRowId(trackIndex),
+				items: rowItems,
+			}));
 
-			return {
-				clipItems: nextClipItems,
-				zoomItems: nextZoomItems,
-				layoutItems: nextLayoutItems,
-				captionItems: nextCaptionItems,
-				annotationRows: annotationRowsSorted,
-				audioRows: audioRowsSorted,
-			};
-		}, [items]);
+		return {
+			clipItems: nextClipItems,
+			zoomItems: nextZoomItems,
+			layoutItems: nextLayoutItems,
+			captionItems: nextCaptionItems,
+			annotationRows: annotationRowsSorted,
+			audioRows: audioRowsSorted,
+			brollRows: brollRowsSorted,
+		};
+	}, [items]);
 
 	return (
 		<>
@@ -777,6 +809,29 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 					))}
 				</Row>
 			))}
+
+			{brollRows.map(({ rowId, items: rowItems }, index) => (
+				<Row
+					key={rowId}
+					id={rowId}
+					isEmpty={rowItems.length === 0}
+					hint={index === 0 ? HINT_BROLL : undefined}
+				>
+					{rowItems.map((item) => (
+						<Item
+							id={item.id}
+							key={item.id}
+							rowId={item.rowId}
+							span={liveSpanPreviewById?.[item.id] ?? item.span}
+							isSelected={item.id === selectedBrollId}
+							onSelectId={onSelectBroll}
+							variant="broll"
+						>
+							{item.label}
+						</Item>
+					))}
+				</Row>
+			))}
 		</>
 	);
 });
@@ -797,12 +852,14 @@ export default function TimelineCanvas({
 	onSelectClip,
 	onSelectAnnotation,
 	onSelectAudio,
+	onSelectBroll,
 	onSelectCaption,
 	onSelectLayout,
 	selectedZoomId,
 	selectedClipId,
 	selectedAnnotationId,
 	selectedAudioId,
+	selectedBrollId,
 	selectedCaptionId,
 	selectedLayoutId,
 	showLayoutTrack = false,
@@ -844,6 +901,7 @@ export default function TimelineCanvas({
 				onSelectClip?.(null);
 				onSelectAnnotation?.(null);
 				onSelectAudio?.(null);
+				onSelectBroll?.(null);
 				onSelectCaption?.(null);
 				onSelectLayout?.(null);
 			}
@@ -865,6 +923,7 @@ export default function TimelineCanvas({
 			onSelectClip,
 			onSelectAnnotation,
 			onSelectAudio,
+			onSelectBroll,
 			onSelectCaption,
 			onSelectLayout,
 			onClearBlockSelection,
@@ -903,6 +962,7 @@ export default function TimelineCanvas({
 				onSelectClip?.(null);
 				onSelectAnnotation?.(null);
 				onSelectAudio?.(null);
+				onSelectBroll?.(null);
 				onSelectCaption?.(null);
 				onSelectLayout?.(null);
 			}
@@ -918,6 +978,7 @@ export default function TimelineCanvas({
 			onSeek,
 			onSelectAnnotation,
 			onSelectAudio,
+			onSelectBroll,
 			onSelectCaption,
 			onSelectLayout,
 			onSelectClip,
@@ -973,11 +1034,13 @@ export default function TimelineCanvas({
 	const timelineRowCount = useMemo(() => {
 		const annotationRowIds = new Set<string>();
 		const audioRowIds = new Set<string>();
+		const brollRowIds = new Set<string>();
 		let hasCaptionRow = false;
 		let hasLayoutRow = false;
 		for (const item of items) {
 			if (isAnnotationTrackRowId(item.rowId)) annotationRowIds.add(item.rowId);
 			if (isAudioTrackRowId(item.rowId)) audioRowIds.add(item.rowId);
+			if (isBrollTrackRowId(item.rowId)) brollRowIds.add(item.rowId);
 			if (item.rowId === CAPTION_ROW_ID) hasCaptionRow = true;
 			if (item.rowId === LAYOUT_ROW_ID) hasLayoutRow = true;
 		}
@@ -992,6 +1055,7 @@ export default function TimelineCanvas({
 			sourceAudioRows +
 			annotationRowIds.size +
 			audioRowIds.size +
+			brollRowIds.size +
 			captionRows +
 			layoutRows
 		);
@@ -1091,6 +1155,7 @@ export default function TimelineCanvas({
 					selectedClipId={selectedClipId}
 					selectedAnnotationId={selectedAnnotationId}
 					selectedAudioId={selectedAudioId}
+					selectedBrollId={selectedBrollId}
 					selectedCaptionId={selectedCaptionId}
 					selectedLayoutId={selectedLayoutId}
 					showLayoutTrack={showLayoutTrack}
@@ -1098,6 +1163,7 @@ export default function TimelineCanvas({
 					onSelectClip={onSelectClip}
 					onSelectAnnotation={onSelectAnnotation}
 					onSelectAudio={onSelectAudio}
+					onSelectBroll={onSelectBroll}
 					onSelectCaption={onSelectCaption}
 					onSelectLayout={onSelectLayout}
 					sourceAudioTracks={sourceAudioTracks}

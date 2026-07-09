@@ -263,9 +263,30 @@
 		"volume": "Volume",
 		"normalize": "Normalize",
 		"sourceTracksTitle": "Clip Source Audio",
+		"sourceTracksHint": "Adjust microphone and system audio separately. System audio can go above 100% if it sounds too quiet.",
+		"microphone": "Microphone",
+		"systemAudio": "System audio",
+		"mixedSource": "Recording audio",
+		"muteTrack": "Mute",
+		"mutedTrackState": "This track is silent",
+		"unmutedTrackState": "This track is playing",
 		"systemLabel": "Source System",
 		"micLabel": "Source Mic",
 		"mixedLabel": "Source",
 		"deleteRegion": "Delete Audio"
+	},
+	"broll": {
+		"title": "B-roll",
+		"fileLabel": "File",
+		"placement": "Where it covers",
+		"placementFull": "Full frame",
+		"placementScreen": "Screen only",
+		"placementFullHint": "Covers the whole video frame",
+		"placementScreenHint": "Covers only the screen area; keeps the camera visible",
+		"fit": "How it fills the space",
+		"fitCover": "Cover (fill & crop)",
+		"fitContain": "Contain (fit inside)",
+		"opacity": "Opacity",
+		"deleteRegion": "Delete B-roll"
 	}
 }

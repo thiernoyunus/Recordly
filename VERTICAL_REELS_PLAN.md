@@ -72,9 +72,29 @@ Zoom clamp inside bands verified fine (depth-only clamp, ignores stage size). 33
 pass, tsc clean, i18n check now FULLY passes (locale drift from the captions merge fixed
 along the way). Not committed.
 
-### Phase 4 — Polish
-Drag the camera directly on the preview (today: sliders/preset grid only), circle-shape
-one-click preset, export parity checks across encoder backends, GIF export dims if needed.
+### Phase 4 — Polish (in progress)
+- DONE: drag the camera directly on the preview (was sliders/preset grid only). commit 6ebfff0.
+- DONE: one-click round camera with a true-circle shape (superellipse exponent 2 threaded
+  through the shared squircle helpers + all render sites). "Make circle" button; max
+  roundness slider also triggers it. commit f6bc489.
+- NOT DOING (unless asked): animated transitions between layout segments. The reference
+  reels (rpn, the Codex ad) all use HARD CUTS synced to speech — cross-fading is not the
+  target aesthetic, and it would be a large, risky change (rendering two full layouts at
+  once across preview + both exporters). Hard cut stays the default.
+- Optional if wanted: export parity checks across encoder backends, GIF export dims.
+
+### Phase 5 — B-roll (implemented)
+Image or video B-roll on a timeline track (mirrors audio regions):
+- Placement: `full` (covers whole frame, including camera) or `screen` (screen band only;
+  camera-only layouts fall back to full). Default fit `cover`, optional `contain`.
+- Video B-roll audio muted in v1; image default duration 3s.
+- Types + helpers in `types.ts`; geometry in `videoPlayback/brollLayout.ts`
+  (`resolveBRollTargetRect`, `computeCoverContainDrawRect`).
+- Timeline: orange B-roll rows, Add Layer entry, settings for placement/fit/opacity.
+- Preview: DOM overlay in `VideoPlayback` (under webcam for screen placement).
+- Export: `lib/exporter/brollRenderer.ts` drawn after screen/webcam composite, before
+  annotations when possible; native static layout skips with `unsupported-broll-overlay`.
+- Out of scope still: B-roll audio mix, Ken Burns, freeform boxes, animated transitions.
 
 ## Working notes
 - State is plain `useState` in `VideoEditor.tsx` (6600+ lines), prop-drilled — new state

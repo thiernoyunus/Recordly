@@ -1,5 +1,8 @@
 import { WebDemuxer } from "web-demuxer";
-import { SOURCE_AUDIO_NORMALIZE_GAIN } from "@/components/video-editor/audio/audioTypes";
+import {
+	resolveSourceAudioTrackGain,
+	SOURCE_AUDIO_NORMALIZE_GAIN,
+} from "@/components/video-editor/audio/audioTypes";
 import type {
 	AudioRegion,
 	ClipRegion,
@@ -64,12 +67,7 @@ function resolveSourceTrackGain(
 	sourceAudioTrackSettings: SourceAudioTrackSettings | undefined,
 	trackId: "mic" | "system" | "mixed",
 ) {
-	const settings = sourceAudioTrackSettings?.[trackId];
-	if (!settings) {
-		return 1;
-	}
-	const normalizeGain = settings.normalize ? SOURCE_AUDIO_NORMALIZE_GAIN : 1;
-	return Math.max(0, Math.min(2, settings.volume * normalizeGain));
+	return resolveSourceAudioTrackGain(sourceAudioTrackSettings?.[trackId]);
 }
 
 export function getSourceTrackIdFromPath(audioPath: string): SourceTrackId {

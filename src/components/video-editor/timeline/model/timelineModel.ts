@@ -2,6 +2,7 @@ import { formatClipSpeedLabel } from "../../clipSpeedChange";
 import type {
 	AnnotationRegion,
 	AudioRegion,
+	BRollRegion,
 	CaptionCue,
 	ClipRegion,
 	LayoutRegion,
@@ -13,8 +14,11 @@ import {
 	getAnnotationTrackRowId,
 	getAudioTrackIndex,
 	getAudioTrackRowId,
+	getBrollTrackIndex,
+	getBrollTrackRowId,
 	isAnnotationTrackRowId,
 	isAudioTrackRowId,
+	isBrollTrackRowId,
 } from "../core/rows";
 import type { TimelineRegionSpan, TimelineRenderItem } from "../core/timelineTypes";
 
@@ -38,6 +42,15 @@ export function getAudioLabel(region: AudioRegion): string {
 	);
 }
 
+export function getBrollLabel(region: BRollRegion): string {
+	return (
+		region.mediaPath
+			.split(/[\\/]/)
+			.pop()
+			?.replace(/\.[^.]+$/, "") || "B-roll"
+	);
+}
+
 function getCaptionLabel(cue: CaptionCue): string {
 	const preview = cue.text.trim() || "Caption";
 	return preview.length > 24 ? `${preview.substring(0, 24)}...` : preview;
@@ -48,6 +61,7 @@ export function buildTimelineItems(params: {
 	clipRegions: ClipRegion[];
 	annotationRegions: AnnotationRegion[];
 	audioRegions: AudioRegion[];
+	brollRegions?: BRollRegion[];
 	captionCues?: CaptionCue[];
 	layoutRegions?: LayoutRegion[];
 }): TimelineRenderItem[] {
@@ -56,6 +70,7 @@ export function buildTimelineItems(params: {
 		clipRegions,
 		annotationRegions,
 		audioRegions,
+		brollRegions = [],
 		captionCues = [],
 		layoutRegions = [],
 	} = params;
@@ -116,6 +131,14 @@ export function buildTimelineItems(params: {
 		variant: "audio",
 	}));
 
+	const brolls: TimelineRenderItem[] = brollRegions.map((region) => ({
+		id: region.id,
+		rowId: getBrollTrackRowId(region.trackIndex ?? 0),
+		span: { start: region.startMs, end: region.endMs },
+		label: getBrollLabel(region),
+		variant: "broll",
+	}));
+
 	const captions: TimelineRenderItem[] = captionCues.map((cue) => ({
 		id: cue.id,
 		rowId: CAPTION_ROW_ID,
@@ -124,16 +147,23 @@ export function buildTimelineItems(params: {
 		variant: "caption",
 	}));
 
-	return [...zooms, ...layouts, ...clips, ...annotations, ...audios, ...captions];
+	return [...zooms, ...layouts, ...clips, ...annotations, ...audios, ...brolls, ...captions];
 }
 
 export function buildAllRegionSpans(params: {
 	zoomRegions: ZoomRegion[];
 	clipRegions: ClipRegion[];
 	audioRegions: AudioRegion[];
+	brollRegions?: BRollRegion[];
 	layoutRegions?: LayoutRegion[];
 }): TimelineRegionSpan[] {
-	const { zoomRegions, clipRegions, audioRegions, layoutRegions = [] } = params;
+	const {
+		zoomRegions,
+		clipRegions,
+		audioRegions,
+		brollRegions = [],
+		layoutRegions = [],
+	} = params;
 	const zooms = zoomRegions.map((r) => ({
 		id: r.id,
 		start: r.startMs,
@@ -158,7 +188,13 @@ export function buildAllRegionSpans(params: {
 		end: r.endMs,
 		rowId: getAudioTrackRowId(r.trackIndex ?? 0),
 	}));
-	return [...zooms, ...layouts, ...clips, ...audios];
+	const brolls = brollRegions.map((r) => ({
+		id: r.id,
+		start: r.startMs,
+		end: r.endMs,
+		rowId: getBrollTrackRowId(r.trackIndex ?? 0),
+	}));
+	return [...zooms, ...layouts, ...clips, ...audios, ...brolls];
 }
 
 export function resolveDropRowId(
@@ -180,6 +216,12 @@ export function resolveDropRowId(
 	if (isAudioTrackRowId(currentRowId)) {
 		return isAudioTrackRowId(proposedRowId)
 			? getAudioTrackRowId(getAudioTrackIndex(proposedRowId))
+			: currentRowId;
+	}
+
+	if (isBrollTrackRowId(currentRowId)) {
+		return isBrollTrackRowId(proposedRowId)
+			? getBrollTrackRowId(getBrollTrackIndex(proposedRowId))
 			: currentRowId;
 	}
 

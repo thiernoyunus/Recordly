@@ -43,8 +43,11 @@ export function MicDeviceRow({
 	selected: boolean;
 	onSelect: () => void;
 }) {
+	// Meter only the selected device: opening a live stream for every listed
+	// device at once (users can have 10+ virtual audio devices) makes macOS
+	// fail some or all of the streams, and the meters read dead.
 	const { level } = useAudioLevelMeter({
-		enabled: true,
+		enabled: selected,
 		deviceId: device.deviceId,
 	});
 

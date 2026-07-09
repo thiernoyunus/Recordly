@@ -4,6 +4,7 @@ export type DeleteSelectionTarget =
 	| "clip"
 	| "annotation"
 	| "audio"
+	| "broll"
 	| "caption"
 	| "layout"
 	| "none";
@@ -15,6 +16,7 @@ interface ResolveDeleteSelectionTargetParams {
 	selectedClipId?: string | null;
 	selectedAnnotationId?: string | null;
 	selectedAudioId?: string | null;
+	selectedBrollId?: string | null;
 	selectedCaptionId?: string | null;
 	selectedLayoutId?: string | null;
 }
@@ -26,6 +28,7 @@ export function resolveDeleteSelectionTarget({
 	selectedClipId,
 	selectedAnnotationId,
 	selectedAudioId,
+	selectedBrollId,
 	selectedCaptionId,
 	selectedLayoutId,
 }: ResolveDeleteSelectionTargetParams): DeleteSelectionTarget {
@@ -35,6 +38,7 @@ export function resolveDeleteSelectionTarget({
 	if (selectedClipId) return "clip";
 	if (selectedAnnotationId) return "annotation";
 	if (selectedAudioId) return "audio";
+	if (selectedBrollId) return "broll";
 	if (selectedCaptionId) return "caption";
 	if (selectedLayoutId) return "layout";
 	return "none";

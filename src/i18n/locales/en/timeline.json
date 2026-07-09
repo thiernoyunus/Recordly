@@ -35,6 +35,9 @@
 	"audio": {
 		"label": "Audio"
 	},
+	"broll": {
+		"label": "B-roll"
+	},
 	"layout": {
 		"label": "Layout",
 		"addLayout": "Add Layout Region"

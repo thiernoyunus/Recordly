@@ -51,4 +51,18 @@ describe("timelineSelectionUtils", () => {
 			}),
 		).toBe("none");
 	});
+
+	it("selects B-roll after audio in the delete priority list", () => {
+		expect(
+			resolveDeleteSelectionTarget({
+				selectAllBlocksActive: false,
+				selectedKeyframeId: null,
+				selectedZoomId: null,
+				selectedClipId: null,
+				selectedAnnotationId: null,
+				selectedAudioId: null,
+				selectedBrollId: "b-1",
+			}),
+		).toBe("broll");
+	});
 });

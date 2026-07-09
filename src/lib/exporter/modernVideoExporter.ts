@@ -2,6 +2,7 @@ import type {
 	AnnotationRegion,
 	AudioRegion,
 	AutoCaptionSettings,
+	BRollRegion,
 	CaptionCue,
 	ClipRegion,
 	CropRegion,
@@ -154,6 +155,7 @@ interface VideoExporterConfig extends ExportConfig {
 	zoomClassicMode?: boolean;
 	frame?: string | null;
 	audioRegions?: AudioRegion[];
+	brollRegions?: BRollRegion[];
 	clipRegions?: ClipRegion[];
 	sourceAudioFallbackPaths?: string[];
 	sourceAudioFallbackStartDelayMsByPath?: Record<string, number>;
@@ -641,6 +643,7 @@ export class ModernVideoExporter {
 					videoWidth: videoInfo.width,
 					videoHeight: videoInfo.height,
 					annotationRegions: this.config.annotationRegions,
+					brollRegions: this.config.brollRegions,
 					autoCaptions: this.config.autoCaptions,
 					autoCaptionSettings: this.config.autoCaptionSettings,
 					speedRegions: this.config.speedRegions,
@@ -1674,6 +1677,9 @@ export class ModernVideoExporter {
 		}
 		if ((this.config.annotationRegions ?? []).length > 0) {
 			reasons.push("unsupported-annotation-overlay");
+		}
+		if ((this.config.brollRegions ?? []).length > 0) {
+			reasons.push("unsupported-broll-overlay");
 		}
 		if ((this.config.autoCaptions ?? []).length > 0) {
 			reasons.push("unsupported-caption-overlay");

@@ -60,6 +60,9 @@ import type {
 	AnnotationType,
 	AutoCaptionAnimation,
 	AutoCaptionSettings,
+	BRollFitMode,
+	BRollPlacement,
+	BRollRegion,
 	CaptionCue,
 	CropRegion,
 	CursorClickEffectStyle,
@@ -825,6 +828,12 @@ interface SettingsPanelProps {
 	onAudioVolumeChange?: (volume: number) => void;
 	onAudioNormalizeChange?: (normalize: boolean) => void;
 	onAudioDelete?: (id: string) => void;
+	selectedBrollId?: string | null;
+	selectedBroll?: BRollRegion | null;
+	onBrollPlacementChange?: (placement: BRollPlacement) => void;
+	onBrollFitModeChange?: (fitMode: BRollFitMode) => void;
+	onBrollOpacityChange?: (opacity: number) => void;
+	onBrollDelete?: (id: string) => void;
 	shadowIntensity?: number;
 	onShadowChange?: (intensity: number) => void;
 	backgroundBlur?: number;
@@ -1295,6 +1304,12 @@ export function SettingsPanel({
 	onAudioVolumeChange,
 	onAudioNormalizeChange,
 	onAudioDelete,
+	selectedBrollId,
+	selectedBroll,
+	onBrollPlacementChange,
+	onBrollFitModeChange,
+	onBrollOpacityChange,
+	onBrollDelete,
 	shadowIntensity = 0.67,
 	onShadowChange,
 	backgroundBlur = 0,
@@ -3626,6 +3641,121 @@ export function SettingsPanel({
 			</section>
 		);
 
+		const selectedBrollFileName =
+			selectedBroll?.mediaPath
+				.split(/[\\/]/)
+				.pop()
+				?.replace(/\.[^.]+$/, "") || "B-roll";
+
+		const brollSectionContent = (
+			<section className="flex flex-col gap-3">
+				<div className="flex items-center justify-between gap-3">
+					<SectionLabel>{tSettings("broll.title", "B-roll")}</SectionLabel>
+				</div>
+				<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-2">
+					<span className="text-[10px] text-muted-foreground">
+						{tSettings("broll.fileLabel", "File")}
+					</span>
+					<p className="mt-0.5 truncate text-[12px] font-medium text-foreground">
+						{selectedBrollFileName}
+					</p>
+				</div>
+
+				<div className="flex flex-col gap-1.5">
+					<span className="text-[10px] text-muted-foreground">
+						{tSettings("broll.placement", "Where it covers")}
+					</span>
+					<div className="grid grid-cols-2 gap-1.5">
+						{(
+							[
+								{
+									value: "full" as const,
+									label: tSettings("broll.placementFull", "Full frame"),
+									hint: tSettings(
+										"broll.placementFullHint",
+										"Covers the whole video frame",
+									),
+								},
+								{
+									value: "screen" as const,
+									label: tSettings("broll.placementScreen", "Screen only"),
+									hint: tSettings(
+										"broll.placementScreenHint",
+										"Covers only the screen area; keeps the camera visible",
+									),
+								},
+							] as const
+						).map((option) => {
+							const isActive = (selectedBroll?.placement ?? "full") === option.value;
+							return (
+								<button
+									key={option.value}
+									type="button"
+									title={option.hint}
+									onClick={() => onBrollPlacementChange?.(option.value)}
+									className={`rounded-lg border px-2 py-1.5 text-left text-[11px] transition-all ${
+										isActive
+											? "border-[#f97316]/40 bg-[#f97316]/10 text-[#f97316]"
+											: "border-foreground/10 bg-foreground/[0.03] text-muted-foreground hover:bg-foreground/[0.06]"
+									}`}
+								>
+									{option.label}
+								</button>
+							);
+						})}
+					</div>
+				</div>
+
+				<div className="flex flex-col gap-1.5">
+					<span className="text-[10px] text-muted-foreground">
+						{tSettings("broll.fit", "How it fills the space")}
+					</span>
+					<div className="grid grid-cols-2 gap-1.5">
+						{(
+							[
+								{
+									value: "cover" as const,
+									label: tSettings("broll.fitCover", "Cover (fill & crop)"),
+								},
+								{
+									value: "contain" as const,
+									label: tSettings("broll.fitContain", "Contain (fit inside)"),
+								},
+							] as const
+						).map((option) => {
+							const isActive = (selectedBroll?.fitMode ?? "cover") === option.value;
+							return (
+								<button
+									key={option.value}
+									type="button"
+									onClick={() => onBrollFitModeChange?.(option.value)}
+									className={`rounded-lg border px-2 py-1.5 text-left text-[11px] transition-all ${
+										isActive
+											? "border-[#f97316]/40 bg-[#f97316]/10 text-[#f97316]"
+											: "border-foreground/10 bg-foreground/[0.03] text-muted-foreground hover:bg-foreground/[0.06]"
+									}`}
+								>
+									{option.label}
+								</button>
+							);
+						})}
+					</div>
+				</div>
+
+				<SliderControl
+					label={tSettings("broll.opacity", "Opacity")}
+					value={selectedBroll?.opacity ?? 1}
+					defaultValue={1}
+					min={0}
+					max={1}
+					step={0.01}
+					onChange={(v) => onBrollOpacityChange?.(v)}
+					formatValue={(v) => `${Math.round(v * 100)}%`}
+					parseInput={(text) => parseFloat(text.replace(/%$/, "")) / 100}
+				/>
+			</section>
+		);
+
 		const clipSectionContent = (
 			<section className="flex flex-col gap-2">
 				<div className="flex items-center justify-between gap-3">
@@ -3715,13 +3845,28 @@ export function SettingsPanel({
 					)}
 				</div>
 
-				{selectedClipId && hasClipSourceAudio && sourceAudioTrackMeta.length > 0 && (
+				{hasClipSourceAudio && sourceAudioTrackMeta.length > 0 && (
 					<div className="mt-1 flex flex-col gap-3">
+						<p className="text-[10px] text-muted-foreground/70">
+							{tSettings(
+								"audio.sourceTracksHint",
+								"Adjust microphone and system audio separately. System audio can go above 100% if it sounds too quiet.",
+							)}
+						</p>
 						{sourceAudioTrackMeta.map((track) => {
 							const settings = sourceAudioTrackSettings[track.id] ?? {
 								volume: 1,
 								normalize: false,
 							};
+							const isMuted = settings.volume <= 0.001;
+							const trackTitle =
+								track.id === "mic"
+									? tSettings("audio.microphone", "Microphone")
+									: track.id === "system"
+										? tSettings("audio.systemAudio", "System audio")
+										: track.id === "mixed"
+											? tSettings("audio.mixedSource", "Recording audio")
+											: track.label;
 							return (
 								<div
 									key={track.id}
@@ -3729,7 +3874,7 @@ export function SettingsPanel({
 								>
 									<div className="mb-2 flex items-center justify-between">
 										<span className="text-[11px] font-medium text-foreground">
-											{track.label}
+											{trackTitle}
 										</span>
 										<button
 											type="button"
@@ -3744,6 +3889,34 @@ export function SettingsPanel({
 										>
 											{t("common.actions.reset", "Reset")}
 										</button>
+									</div>
+									<div className="mb-2 flex items-center justify-between rounded-lg bg-foreground/[0.03] px-2.5 py-1.5">
+										<div>
+											<span className="text-[10px] text-muted-foreground">
+												{tSettings("audio.muteTrack", "Mute")}
+											</span>
+											<p className="text-[9px] text-muted-foreground/50 mt-0.5">
+												{isMuted
+													? tSettings(
+															"audio.mutedTrackState",
+															"This track is silent",
+														)
+													: tSettings(
+															"audio.unmutedTrackState",
+															"This track is playing",
+														)}
+											</p>
+										</div>
+										<Switch
+											checked={isMuted}
+											onCheckedChange={(muted) =>
+												onSourceAudioTrackVolumeChange?.(
+													track.id,
+													muted ? 0 : 1,
+												)
+											}
+											className="data-[state=checked]:bg-[#06b6d4] scale-75"
+										/>
 									</div>
 									<div className="mb-2 flex items-center justify-between rounded-lg bg-foreground/[0.03] px-2.5 py-1.5">
 										<span className="text-[10px] text-muted-foreground">
@@ -3762,7 +3935,7 @@ export function SettingsPanel({
 										value={settings.volume}
 										defaultValue={1}
 										min={0}
-										max={1}
+										max={2}
 										step={0.01}
 										onChange={(v) =>
 											onSourceAudioTrackVolumeChange?.(track.id, v)
@@ -3819,6 +3992,8 @@ export function SettingsPanel({
 				return clipSectionContent;
 			case "audio":
 				return audioSectionContent;
+			case "broll":
+				return brollSectionContent;
 			case "layout":
 				return layoutItemSectionContent;
 			case "frame":
@@ -4435,6 +4610,7 @@ export function SettingsPanel({
 						if (activeEffectSection === "clip" && selectedClipId) return false;
 						if (activeEffectSection === "zoom" && selectedZoomId) return false;
 						if (activeEffectSection === "audio" && selectedAudioId) return false;
+						if (activeEffectSection === "broll" && selectedBrollId) return false;
 						if (activeEffectSection === "layout" && selectedLayoutId) return false;
 						if (selectedAnnotationId) return false; // Annotation editor handles its own but let's see
 						return true;
@@ -4478,6 +4654,19 @@ export function SettingsPanel({
 					>
 						<Trash2 className="h-3 w-3" />
 						{tSettings("audio.deleteRegion", "Delete Audio")}
+					</Button>
+				)}
+				{activeEffectSection === "broll" && selectedBrollId && (
+					<Button
+						onClick={() => {
+							if (selectedBrollId && onBrollDelete) onBrollDelete(selectedBrollId);
+						}}
+						variant="destructive"
+						size="sm"
+						className="h-8 w-full gap-2 border border-red-500/20 bg-red-500/10 text-xs text-red-400 transition-all hover:border-red-500/30 hover:bg-red-500/20"
+					>
+						<Trash2 className="h-3 w-3" />
+						{tSettings("broll.deleteRegion", "Delete B-roll")}
 					</Button>
 				)}
 				{selectedAnnotationId && (

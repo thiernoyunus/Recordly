@@ -1,4 +1,8 @@
-import type { SourceAudioTrackSettings } from "@/components/video-editor/audio/audioTypes";
+import {
+	clampSourceAudioVolume,
+	type SourceAudioTrackSetting,
+	type SourceAudioTrackSettings,
+} from "@/components/video-editor/audio/audioTypes";
 import type {
 	ExportBackendPreference,
 	ExportEncodingMode,
@@ -27,6 +31,10 @@ import {
 	type AudioRegion,
 	type AutoCaptionAnimation,
 	type AutoCaptionSettings,
+	type BRollFitMode,
+	type BRollMediaKind,
+	type BRollPlacement,
+	type BRollRegion,
 	type CaptionCue,
 	type CaptionCueWord,
 	type ClipRegion,
@@ -37,6 +45,9 @@ import {
 	DEFAULT_ANNOTATION_SIZE,
 	DEFAULT_ANNOTATION_STYLE,
 	DEFAULT_AUTO_CAPTION_SETTINGS,
+	DEFAULT_BROLL_FIT_MODE,
+	DEFAULT_BROLL_OPACITY,
+	DEFAULT_BROLL_PLACEMENT,
 	DEFAULT_CONNECTED_ZOOM_DURATION_MS,
 	DEFAULT_CONNECTED_ZOOM_EASING,
 	DEFAULT_CONNECTED_ZOOM_GAP_MS,
@@ -70,6 +81,7 @@ import {
 	DEFAULT_ZOOM_OUT_EASING,
 	DEFAULT_ZOOM_SMOOTHNESS,
 	getDefaultCaptionFontFamily,
+	inferBRollMediaKind,
 	LayoutRegion,
 	normalizeCursorClickEffectColor,
 	normalizeCursorClickEffectStyle,
@@ -144,6 +156,7 @@ export interface ProjectEditorState {
 	speedRegions: SpeedRegion[];
 	annotationRegions: AnnotationRegion[];
 	audioRegions: AudioRegion[];
+	brollRegions: BRollRegion[];
 	autoCaptions: CaptionCue[];
 	autoCaptionSettings: AutoCaptionSettings;
 	webcam: WebcamOverlaySettings;
@@ -175,6 +188,43 @@ function isFiniteNumber(value: unknown): value is number {
 
 function clamp(value: number, min: number, max: number) {
 	return Math.min(max, Math.max(min, value));
+}
+
+function normalizeSourceAudioTrackSetting(value: unknown): SourceAudioTrackSetting {
+	if (!value || typeof value !== "object") {
+		return { volume: 1, normalize: false };
+	}
+	const record = value as Record<string, unknown>;
+	return {
+		volume: clampSourceAudioVolume(isFiniteNumber(record.volume) ? record.volume : 1),
+		normalize: Boolean(record.normalize),
+	};
+}
+
+function normalizeSourceAudioTrackSettings(value: unknown): SourceAudioTrackSettings {
+	if (!value || typeof value !== "object") {
+		return {};
+	}
+	const next: SourceAudioTrackSettings = {};
+	for (const [trackId, setting] of Object.entries(value as Record<string, unknown>)) {
+		if (!trackId) continue;
+		next[trackId] = normalizeSourceAudioTrackSetting(setting);
+	}
+	return next;
+}
+
+function normalizeSourceAudioTrackSettingsByClip(
+	value: unknown,
+): Record<string, SourceAudioTrackSettings> {
+	if (!value || typeof value !== "object") {
+		return {};
+	}
+	const next: Record<string, SourceAudioTrackSettings> = {};
+	for (const [clipId, settings] of Object.entries(value as Record<string, unknown>)) {
+		if (!clipId) continue;
+		next[clipId] = normalizeSourceAudioTrackSettings(settings);
+	}
+	return next;
 }
 
 type PersistedDevMotionBlurSettings = {
@@ -753,6 +803,54 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 				})
 		: [];
 
+	const normalizedBrollRegions: BRollRegion[] = Array.isArray(
+		(editor as Partial<ProjectEditorState>).brollRegions,
+	)
+		? ((editor as Partial<ProjectEditorState>).brollRegions as BRollRegion[])
+				.filter((region): region is BRollRegion =>
+					Boolean(region && typeof region.id === "string"),
+				)
+				.map((region) => {
+					const rawStart = isFiniteNumber(region.startMs)
+						? Math.round(region.startMs)
+						: 0;
+					const rawEnd = isFiniteNumber(region.endMs)
+						? Math.round(region.endMs)
+						: rawStart + 1000;
+					const startMs = Math.max(0, Math.min(rawStart, rawEnd));
+					const endMs = Math.max(startMs + 1, rawEnd);
+					const mediaPath = typeof region.mediaPath === "string" ? region.mediaPath : "";
+					const mediaKind: BRollMediaKind =
+						region.mediaKind === "image" || region.mediaKind === "video"
+							? region.mediaKind
+							: inferBRollMediaKind(mediaPath);
+					const placement: BRollPlacement =
+						region.placement === "screen" || region.placement === "full"
+							? region.placement
+							: DEFAULT_BROLL_PLACEMENT;
+					const fitMode: BRollFitMode =
+						region.fitMode === "contain" || region.fitMode === "cover"
+							? region.fitMode
+							: DEFAULT_BROLL_FIT_MODE;
+
+					return {
+						id: region.id,
+						startMs,
+						endMs,
+						mediaPath,
+						mediaKind,
+						placement,
+						fitMode,
+						opacity: isFiniteNumber(region.opacity)
+							? clamp(region.opacity, 0, 1)
+							: DEFAULT_BROLL_OPACITY,
+						trackIndex: isFiniteNumber(region.trackIndex)
+							? Math.max(0, Math.floor(region.trackIndex))
+							: 0,
+					};
+				})
+		: [];
+
 	const normalizedAutoCaptions: CaptionCue[] = Array.isArray(
 		(editor as Partial<ProjectEditorState>).autoCaptions,
 	)
@@ -1054,6 +1152,7 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 		speedRegions: normalizedSpeedRegions,
 		annotationRegions: normalizedAnnotationRegions,
 		audioRegions: normalizedAudioRegions,
+		brollRegions: normalizedBrollRegions,
 		autoCaptions: normalizedAutoCaptions,
 		autoCaptionSettings: normalizedAutoCaptionSettings,
 		webcam: {
@@ -1127,16 +1226,12 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 				: DEFAULT_WEBCAM_MARGIN,
 		},
 		layout: normalizedLayout,
-		sourceAudioTrackSettingsByClip:
-			editor.sourceAudioTrackSettingsByClip &&
-			typeof editor.sourceAudioTrackSettingsByClip === "object"
-				? editor.sourceAudioTrackSettingsByClip
-				: {},
-		defaultSourceAudioTrackSettings:
-			editor.defaultSourceAudioTrackSettings &&
-			typeof editor.defaultSourceAudioTrackSettings === "object"
-				? editor.defaultSourceAudioTrackSettings
-				: {},
+		sourceAudioTrackSettingsByClip: normalizeSourceAudioTrackSettingsByClip(
+			editor.sourceAudioTrackSettingsByClip,
+		),
+		defaultSourceAudioTrackSettings: normalizeSourceAudioTrackSettings(
+			editor.defaultSourceAudioTrackSettings,
+		),
 		aspectRatio:
 			typeof editor.aspectRatio === "string" &&
 			(validAspectRatios.has(editor.aspectRatio as AspectRatio) ||

@@ -14,15 +14,18 @@ import {
 function createSnapshot(id: string | null): EditorHistorySnapshot {
 	return {
 		zoomRegions: [],
+		layoutRegions: [],
 		clipRegions: [],
 		speedRegions: [],
 		annotationRegions: [],
 		audioRegions: [],
+		brollRegions: [],
 		autoCaptions: [],
 		selectedZoomId: id,
 		selectedClipId: id ? `clip-${id}` : null,
 		selectedAnnotationId: null,
 		selectedAudioId: null,
+		selectedBrollId: null,
 	};
 }
 

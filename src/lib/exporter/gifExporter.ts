@@ -68,6 +68,7 @@ interface GifExporterConfig {
 	layout?: SceneLayoutSettings;
 	layoutRegions?: LayoutRegion[];
 	annotationRegions?: AnnotationRegion[];
+	brollRegions?: import("@/components/video-editor/types").BRollRegion[];
 	autoCaptions?: CaptionCue[];
 	autoCaptionSettings?: AutoCaptionSettings;
 	cursorTelemetry?: CursorTelemetryPoint[];
@@ -174,6 +175,7 @@ export function buildGifFrameRendererConfig(
 		videoWidth: videoInfo.width,
 		videoHeight: videoInfo.height,
 		annotationRegions: config.annotationRegions,
+		brollRegions: config.brollRegions,
 		autoCaptions: config.autoCaptions,
 		autoCaptionSettings: config.autoCaptionSettings,
 		speedRegions: config.speedRegions,

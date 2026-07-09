@@ -1,6 +1,7 @@
 import type {
 	AnnotationRegion,
 	AudioRegion,
+	BRollRegion,
 	CaptionCue,
 	ClipRegion,
 	LayoutRegion,
@@ -15,11 +16,13 @@ export type EditorHistorySnapshot = {
 	speedRegions: SpeedRegion[];
 	annotationRegions: AnnotationRegion[];
 	audioRegions: AudioRegion[];
+	brollRegions: BRollRegion[];
 	autoCaptions: CaptionCue[];
 	selectedZoomId: string | null;
 	selectedClipId: string | null;
 	selectedAnnotationId: string | null;
 	selectedAudioId: string | null;
+	selectedBrollId: string | null;
 };
 
 export type EditorHistoryStack = {

@@ -3,6 +3,8 @@ import {
 	ANNOTATION_ROW_PREFIX,
 	AUDIO_ROW_ID,
 	AUDIO_ROW_PREFIX,
+	BROLL_ROW_ID,
+	BROLL_ROW_PREFIX,
 } from "./constants";
 
 export function getAnnotationTrackRowId(trackIndex: number) {
@@ -36,5 +38,22 @@ export function getAudioTrackIndex(rowId: string) {
 	}
 
 	const parsed = Number.parseInt(rowId.slice(AUDIO_ROW_PREFIX.length), 10);
+	return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+}
+
+export function getBrollTrackRowId(trackIndex: number) {
+	return `${BROLL_ROW_PREFIX}${Math.max(0, Math.floor(trackIndex))}`;
+}
+
+export function isBrollTrackRowId(rowId: string) {
+	return rowId === BROLL_ROW_ID || rowId.startsWith(BROLL_ROW_PREFIX);
+}
+
+export function getBrollTrackIndex(rowId: string) {
+	if (rowId === BROLL_ROW_ID) {
+		return 0;
+	}
+
+	const parsed = Number.parseInt(rowId.slice(BROLL_ROW_PREFIX.length), 10);
 	return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
 }

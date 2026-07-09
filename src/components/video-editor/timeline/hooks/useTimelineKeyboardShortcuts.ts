@@ -15,6 +15,7 @@ interface UseTimelineKeyboardShortcutsParams {
 	selectedClipId?: string | null;
 	selectedAnnotationId?: string | null;
 	selectedAudioId?: string | null;
+	selectedBrollId?: string | null;
 	selectedCaptionId?: string | null;
 	selectedLayoutId?: string | null;
 	selectAllBlocksActive: boolean;
@@ -27,6 +28,7 @@ interface UseTimelineKeyboardShortcutsParams {
 	deleteSelectedClip: () => void;
 	deleteSelectedAnnotation: () => void;
 	deleteSelectedAudio: () => void;
+	deleteSelectedBroll: () => void;
 	deleteSelectedCaption: () => void;
 	deleteSelectedLayout: () => void;
 	cycleAnnotationsAtCurrentTime: (backward?: boolean) => boolean;
@@ -44,6 +46,7 @@ export function useTimelineKeyboardShortcuts({
 	selectedClipId,
 	selectedAnnotationId,
 	selectedAudioId,
+	selectedBrollId,
 	selectedCaptionId,
 	selectedLayoutId,
 	selectAllBlocksActive,
@@ -56,6 +59,7 @@ export function useTimelineKeyboardShortcuts({
 	deleteSelectedClip,
 	deleteSelectedAnnotation,
 	deleteSelectedAudio,
+	deleteSelectedBroll,
 	deleteSelectedCaption,
 	deleteSelectedLayout,
 	cycleAnnotationsAtCurrentTime,
@@ -110,6 +114,7 @@ export function useTimelineKeyboardShortcuts({
 					selectedClipId,
 					selectedAnnotationId,
 					selectedAudioId,
+					selectedBrollId,
 					selectedCaptionId,
 					selectedLayoutId,
 				});
@@ -126,6 +131,8 @@ export function useTimelineKeyboardShortcuts({
 					deleteSelectedAnnotation();
 				} else if (target === "audio") {
 					deleteSelectedAudio();
+				} else if (target === "broll") {
+					deleteSelectedBroll();
 				} else if (target === "caption") {
 					deleteSelectedCaption();
 				} else if (target === "layout") {
@@ -143,6 +150,7 @@ export function useTimelineKeyboardShortcuts({
 		cycleAnnotationsAtCurrentTime,
 		deleteSelectedAnnotation,
 		deleteSelectedAudio,
+		deleteSelectedBroll,
 		deleteSelectedCaption,
 		deleteSelectedClip,
 		deleteSelectedKeyframe,
@@ -158,6 +166,7 @@ export function useTimelineKeyboardShortcuts({
 		selectAllBlocksActive,
 		selectedAnnotationId,
 		selectedAudioId,
+		selectedBrollId,
 		selectedCaptionId,
 		selectedLayoutId,
 		selectedClipId,

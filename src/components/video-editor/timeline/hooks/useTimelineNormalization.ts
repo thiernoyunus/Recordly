@@ -1,5 +1,12 @@
 import { useEffect } from "react";
-import type { AudioRegion, LayoutRegion, SpeedRegion, TrimRegion, ZoomRegion } from "../../types";
+import type {
+	AudioRegion,
+	BRollRegion,
+	LayoutRegion,
+	SpeedRegion,
+	TrimRegion,
+	ZoomRegion,
+} from "../../types";
 import { normalizeRegionSpan } from "../core/spans";
 
 interface UseTimelineNormalizationParams {
@@ -9,11 +16,13 @@ interface UseTimelineNormalizationParams {
 	trimRegions: TrimRegion[];
 	speedRegions: SpeedRegion[];
 	audioRegions: AudioRegion[];
+	brollRegions?: BRollRegion[];
 	layoutRegions?: LayoutRegion[];
 	onZoomSpanChange: (id: string, span: { start: number; end: number }) => void;
 	onTrimSpanChange?: (id: string, span: { start: number; end: number }) => void;
 	onSpeedSpanChange?: (id: string, span: { start: number; end: number }) => void;
 	onAudioSpanChange?: (id: string, span: { start: number; end: number }) => void;
+	onBrollSpanChange?: (id: string, span: { start: number; end: number }) => void;
 	onLayoutSpanChange?: (id: string, span: { start: number; end: number }) => void;
 }
 
@@ -24,11 +33,13 @@ export function useTimelineNormalization({
 	trimRegions,
 	speedRegions,
 	audioRegions,
+	brollRegions = [],
 	layoutRegions = [],
 	onZoomSpanChange,
 	onTrimSpanChange,
 	onSpeedSpanChange,
 	onAudioSpanChange,
+	onBrollSpanChange,
 	onLayoutSpanChange,
 }: UseTimelineNormalizationParams) {
 	useEffect(() => {
@@ -88,6 +99,19 @@ export function useTimelineNormalization({
 			}
 		});
 
+		brollRegions.forEach((region) => {
+			const normalized = normalizeRegionSpan({
+				startMs: region.startMs,
+				endMs: region.endMs,
+				totalMs,
+				minDurationMs: safeMinDurationMs,
+			});
+
+			if (normalized.start !== region.startMs || normalized.end !== region.endMs) {
+				onBrollSpanChange?.(region.id, normalized);
+			}
+		});
+
 		layoutRegions.forEach((region) => {
 			const normalized = normalizeRegionSpan({
 				startMs: region.startMs,
@@ -107,11 +131,13 @@ export function useTimelineNormalization({
 		trimRegions,
 		speedRegions,
 		audioRegions,
+		brollRegions,
 		layoutRegions,
 		onZoomSpanChange,
 		onTrimSpanChange,
 		onSpeedSpanChange,
 		onAudioSpanChange,
+		onBrollSpanChange,
 		onLayoutSpanChange,
 	]);
 }

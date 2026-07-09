@@ -3,6 +3,7 @@ import { useCallback, useMemo } from "react";
 import type {
 	AnnotationRegion,
 	AudioRegion,
+	BRollRegion,
 	CaptionCue,
 	ClipRegion,
 	LayoutRegion,
@@ -13,8 +14,10 @@ import type {
 import {
 	getAnnotationTrackIndex,
 	getAudioTrackIndex,
+	getBrollTrackIndex,
 	isAnnotationTrackRowId,
 	isAudioTrackRowId,
+	isBrollTrackRowId,
 } from "../core/rows";
 import { spansOverlap } from "../core/spans";
 import type { TimelineRenderItem } from "../core/timelineTypes";
@@ -27,6 +30,7 @@ interface UseTimelineDndBindingsParams {
 	annotationRegions: AnnotationRegion[];
 	speedRegions: SpeedRegion[];
 	audioRegions: AudioRegion[];
+	brollRegions?: BRollRegion[];
 	captionCues: CaptionCue[];
 	layoutRegions?: LayoutRegion[];
 	onZoomSpanChange: (id: string, span: Span) => void;
@@ -35,6 +39,7 @@ interface UseTimelineDndBindingsParams {
 	onAnnotationSpanChange?: (id: string, span: Span, trackIndex?: number) => void;
 	onSpeedSpanChange?: (id: string, span: Span) => void;
 	onAudioSpanChange?: (id: string, span: Span, trackIndex?: number) => void;
+	onBrollSpanChange?: (id: string, span: Span, trackIndex?: number) => void;
 	onCaptionSpanChange?: (id: string, span: Span) => void;
 	onLayoutSpanChange?: (id: string, span: Span) => void;
 }
@@ -46,6 +51,7 @@ type TimelineItemKind =
 	| "annotation"
 	| "speed"
 	| "audio"
+	| "broll"
 	| "caption"
 	| "layout"
 	| null;
@@ -57,6 +63,7 @@ export function useTimelineDndBindings({
 	annotationRegions,
 	speedRegions,
 	audioRegions,
+	brollRegions = [],
 	captionCues,
 	layoutRegions = [],
 	onZoomSpanChange,
@@ -65,6 +72,7 @@ export function useTimelineDndBindings({
 	onAnnotationSpanChange,
 	onSpeedSpanChange,
 	onAudioSpanChange,
+	onBrollSpanChange,
 	onCaptionSpanChange,
 	onLayoutSpanChange,
 }: UseTimelineDndBindingsParams) {
@@ -76,6 +84,7 @@ export function useTimelineDndBindings({
 			if (annotationRegions.some((r) => r.id === id)) return "annotation";
 			if (speedRegions.some((r) => r.id === id)) return "speed";
 			if (audioRegions.some((r) => r.id === id)) return "audio";
+			if (brollRegions.some((r) => r.id === id)) return "broll";
 			if (captionCues.some((c) => c.id === id)) return "caption";
 			if (layoutRegions.some((r) => r.id === id)) return "layout";
 			return null;
@@ -87,23 +96,29 @@ export function useTimelineDndBindings({
 			annotationRegions,
 			speedRegions,
 			audioRegions,
+			brollRegions,
 			captionCues,
 			layoutRegions,
 		],
 	);
 
 	const resolveTrackIndex = useCallback(
-		(kind: "annotation" | "audio", id: string, rowId?: string): number => {
+		(kind: "annotation" | "audio" | "broll", id: string, rowId?: string): number => {
 			if (kind === "annotation") {
 				return rowId && isAnnotationTrackRowId(rowId)
 					? getAnnotationTrackIndex(rowId)
 					: (annotationRegions.find((region) => region.id === id)?.trackIndex ?? 0);
 			}
+			if (kind === "broll") {
+				return rowId && isBrollTrackRowId(rowId)
+					? getBrollTrackIndex(rowId)
+					: (brollRegions.find((region) => region.id === id)?.trackIndex ?? 0);
+			}
 			return rowId && isAudioTrackRowId(rowId)
 				? getAudioTrackIndex(rowId)
 				: (audioRegions.find((region) => region.id === id)?.trackIndex ?? 0);
 		},
-		[annotationRegions, audioRegions],
+		[annotationRegions, audioRegions, brollRegions],
 	);
 
 	const hasOverlap = useCallback(
@@ -136,6 +151,13 @@ export function useTimelineDndBindings({
 				);
 			}
 
+			if (itemKind === "broll") {
+				const activeTrackIndex = resolveTrackIndex("broll", excludeId, rowId);
+				return checkOverlap(
+					brollRegions.filter((region) => (region.trackIndex ?? 0) === activeTrackIndex),
+				);
+			}
+
 			return false;
 		},
 		[
@@ -145,6 +167,7 @@ export function useTimelineDndBindings({
 			trimRegions,
 			clipRegions,
 			audioRegions,
+			brollRegions,
 			speedRegions,
 			captionCues,
 			layoutRegions,
@@ -158,10 +181,19 @@ export function useTimelineDndBindings({
 				clipRegions,
 				annotationRegions,
 				audioRegions,
+				brollRegions,
 				captionCues,
 				layoutRegions,
 			}),
-		[zoomRegions, clipRegions, annotationRegions, audioRegions, captionCues, layoutRegions],
+		[
+			zoomRegions,
+			clipRegions,
+			annotationRegions,
+			audioRegions,
+			brollRegions,
+			captionCues,
+			layoutRegions,
+		],
 	);
 
 	const allRegionSpans = useMemo(
@@ -170,9 +202,10 @@ export function useTimelineDndBindings({
 				zoomRegions,
 				clipRegions,
 				audioRegions,
+				brollRegions,
 				layoutRegions,
 			}),
-		[zoomRegions, clipRegions, audioRegions, layoutRegions],
+		[zoomRegions, clipRegions, audioRegions, brollRegions, layoutRegions],
 	);
 
 	const getResolvedDropRowId = useCallback(
@@ -197,6 +230,9 @@ export function useTimelineDndBindings({
 			} else if (itemKind === "audio") {
 				const nextTrackIndex = resolveTrackIndex("audio", id, rowId);
 				onAudioSpanChange?.(id, span, nextTrackIndex);
+			} else if (itemKind === "broll") {
+				const nextTrackIndex = resolveTrackIndex("broll", id, rowId);
+				onBrollSpanChange?.(id, span, nextTrackIndex);
 			} else if (itemKind === "caption") {
 				onCaptionSpanChange?.(id, span);
 			} else if (itemKind === "layout") {
@@ -212,6 +248,7 @@ export function useTimelineDndBindings({
 			onAnnotationSpanChange,
 			onSpeedSpanChange,
 			onAudioSpanChange,
+			onBrollSpanChange,
 			onCaptionSpanChange,
 			onLayoutSpanChange,
 		],
