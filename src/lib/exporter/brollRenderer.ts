@@ -196,6 +196,9 @@ export async function drawBRollRegions(
 		ctx.beginPath();
 		ctx.rect(dest.x, dest.y, dest.width, dest.height);
 		ctx.clip();
+		// Solid plate so Contain letterboxing does not show the live screen under the B-roll.
+		ctx.fillStyle = "#000000";
+		ctx.fillRect(dest.x, dest.y, dest.width, dest.height);
 		ctx.drawImage(
 			source,
 			draw.sx,

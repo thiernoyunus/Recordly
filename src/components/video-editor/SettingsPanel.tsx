@@ -3673,7 +3673,7 @@ export function SettingsPanel({
 									label: tSettings("broll.placementFull", "Full frame"),
 									hint: tSettings(
 										"broll.placementFullHint",
-										"Covers the whole video frame",
+										"Replaces the entire frame (including camera)",
 									),
 								},
 								{
@@ -3681,7 +3681,7 @@ export function SettingsPanel({
 									label: tSettings("broll.placementScreen", "Screen only"),
 									hint: tSettings(
 										"broll.placementScreenHint",
-										"Covers only the screen area; keeps the camera visible",
+										"Replaces only the screen half; your camera stays",
 									),
 								},
 							] as const
@@ -3716,10 +3716,18 @@ export function SettingsPanel({
 								{
 									value: "cover" as const,
 									label: tSettings("broll.fitCover", "Cover (fill & crop)"),
+									hint: tSettings(
+										"broll.fitCoverHint",
+										"Fills the whole area; crops edges if needed. Best default for reels.",
+									),
 								},
 								{
 									value: "contain" as const,
 									label: tSettings("broll.fitContain", "Contain (fit inside)"),
+									hint: tSettings(
+										"broll.fitContainHint",
+										"Shows the whole image; empty edges are black (screen stays hidden).",
+									),
 								},
 							] as const
 						).map((option) => {
@@ -3728,6 +3736,7 @@ export function SettingsPanel({
 								<button
 									key={option.value}
 									type="button"
+									title={"hint" in option ? option.hint : undefined}
 									onClick={() => onBrollFitModeChange?.(option.value)}
 									className={`rounded-lg border px-2 py-1.5 text-left text-[11px] transition-all ${
 										isActive

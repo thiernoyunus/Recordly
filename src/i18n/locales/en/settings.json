@@ -281,11 +281,13 @@
 		"placement": "Where it covers",
 		"placementFull": "Full frame",
 		"placementScreen": "Screen only",
-		"placementFullHint": "Covers the whole video frame",
-		"placementScreenHint": "Covers only the screen area; keeps the camera visible",
+		"placementFullHint": "Replaces the entire frame (including camera)",
+		"placementScreenHint": "Replaces only the screen half; your camera stays",
 		"fit": "How it fills the space",
 		"fitCover": "Cover (fill & crop)",
+		"fitCoverHint": "Fills the whole area; crops edges if needed. Best default for reels.",
 		"fitContain": "Contain (fit inside)",
+		"fitContainHint": "Shows the whole image; empty edges are black (screen stays hidden).",
 		"opacity": "Opacity",
 		"deleteRegion": "Delete B-roll"
 	}

@@ -55,8 +55,16 @@ export function BrollPreviewOverlay({
 		return null;
 	}
 
+	// IMPORTANT: use a Fragment (no wrapper with z-index). A parent stacking
+	// context at z-index 2 would trap child z-index values so full-frame B-roll
+	// could never paint above the webcam sibling (z-index 3).
+	// Webcam sits at 3; captions at 5. Screen-only B-roll stays under the camera.
+	const WEBCAM_Z = 3;
+	const screenOnlyZ = Math.min(zIndex, WEBCAM_Z - 1); // default 2
+	const fullFrameZ = WEBCAM_Z + 1; // 4 — covers camera; captions still above
+
 	return (
-		<div className="pointer-events-none absolute inset-0" style={{ zIndex }}>
+		<>
 			{active.map((region) => {
 				const target = resolveBRollTargetRect({
 					placement: region.placement,
@@ -65,11 +73,13 @@ export function BrollPreviewOverlay({
 					screenRect,
 					maskRect,
 				});
-				// Full-frame B-roll intentionally covers the camera bubble (above webcam z-index 3).
-				// Screen-only B-roll stays under the camera band (default zIndex).
-				const itemZ = region.placement === "full" ? zIndex + 2 : zIndex;
+				const itemZ = region.placement === "full" ? fullFrameZ : screenOnlyZ;
 				return (
-					<div key={region.id} style={{ zIndex: itemZ, position: "absolute", inset: 0 }}>
+					<div
+						key={region.id}
+						className="pointer-events-none absolute inset-0"
+						style={{ zIndex: itemZ }}
+					>
 						<BrollPreviewItem
 							region={region}
 							target={target}
@@ -79,7 +89,7 @@ export function BrollPreviewOverlay({
 					</div>
 				);
 			})}
-		</div>
+		</>
 	);
 }
 
@@ -157,42 +167,57 @@ function BrollPreviewItem({
 		return null;
 	}
 
-	const commonStyle: CSSProperties = {
+	// Opaque plate over the whole target so Contain letterboxing never reveals
+	// the live screen (or camera, for full-frame B-roll) underneath.
+	const plateStyle: CSSProperties = {
 		position: "absolute",
 		left: target.x,
 		top: target.y,
 		width: target.width,
 		height: target.height,
+		overflow: "hidden",
+		backgroundColor: "#000000",
 		opacity: Math.max(0, Math.min(1, region.opacity ?? 1)),
+		pointerEvents: "none",
+	};
+
+	const mediaStyle: CSSProperties = {
+		display: "block",
+		width: "100%",
+		height: "100%",
 		objectFit: region.fitMode === "contain" ? "contain" : "cover",
 		pointerEvents: "none",
 	};
 
 	if (region.mediaKind === "image") {
 		return (
-			<img
-				ref={(node) => {
-					mediaRef.current = node;
-				}}
-				src={src}
-				alt=""
-				style={commonStyle}
-				draggable={false}
-			/>
+			<div style={plateStyle}>
+				<img
+					ref={(node) => {
+						mediaRef.current = node;
+					}}
+					src={src}
+					alt=""
+					style={mediaStyle}
+					draggable={false}
+				/>
+			</div>
 		);
 	}
 
 	return (
-		<video
-			ref={(node) => {
-				mediaRef.current = node;
-			}}
-			src={src}
-			style={commonStyle}
-			muted
-			playsInline
-			preload="auto"
-			aria-hidden="true"
-		/>
+		<div style={plateStyle}>
+			<video
+				ref={(node) => {
+					mediaRef.current = node;
+				}}
+				src={src}
+				style={mediaStyle}
+				muted
+				playsInline
+				preload="auto"
+				aria-hidden="true"
+			/>
+		</div>
 	);
 }
