@@ -544,7 +544,12 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate, A
 	}
 
 	private static func resolveMicrophoneCaptureDevice(config: CaptureConfig) -> AVCaptureDevice? {
-		let audioDevices = AVCaptureDevice.devices(for: .audio)
+		let discoverySession = AVCaptureDevice.DiscoverySession(
+			deviceTypes: [.builtInMicrophone, .externalUnknown],
+			mediaType: .audio,
+			position: .unspecified
+		)
+		let audioDevices = discoverySession.devices
 
 		if let microphoneLabel = config.microphoneLabel?.trimmingCharacters(in: .whitespacesAndNewlines), !microphoneLabel.isEmpty {
 			if let matchedDevice = audioDevices.first(where: { $0.localizedName == microphoneLabel }) {

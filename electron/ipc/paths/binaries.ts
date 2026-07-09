@@ -183,6 +183,21 @@ export async function ensureSwiftHelperBinary(
 	label: string,
 	prebundledBinaryName?: string,
 ): Promise<string> {
+	// Packaged builds never compile from Swift sources (they may not ship).
+	// Prefer the prebundled helper immediately so a missing source path cannot
+	// crash production startup.
+	if (app.isPackaged && prebundledBinaryName) {
+		const prebundledPath = getPrebundledNativeHelperPath(prebundledBinaryName);
+		try {
+			await fs.access(prebundledPath, fsConstants.X_OK);
+			return prebundledPath;
+		} catch {
+			throw new Error(
+				`${label} is missing from this app build (${prebundledPath}). Reinstall or update the app.`,
+			);
+		}
+	}
+
 	const helperDir = path.dirname(binaryPath);
 	await fs.mkdir(helperDir, { recursive: true });
 
@@ -190,6 +205,16 @@ export async function ensureSwiftHelperBinary(
 	try {
 		sourceMtimeMs = (await fs.stat(sourcePath)).mtimeMs;
 	} catch (error) {
+		// Dev fallback: if source is missing but a prebundled binary exists, use it.
+		if (prebundledBinaryName) {
+			const prebundledPath = getPrebundledNativeHelperPath(prebundledBinaryName);
+			try {
+				await fs.access(prebundledPath, fsConstants.X_OK);
+				return prebundledPath;
+			} catch {
+				// fall through to original error
+			}
+		}
 		throw new Error(`${label} source is unavailable: ${String(error)}`);
 	}
 
@@ -210,17 +235,12 @@ export async function ensureSwiftHelperBinary(
 		try {
 			await fs.access(prebundledPath, fsConstants.X_OK);
 			const prebundledStat = await fs.stat(prebundledPath);
-			// Packaged builds always use the shipped binary.
-			// In dev, only use it when it is at least as new as the source.
-			if (app.isPackaged || prebundledStat.mtimeMs >= sourceMtimeMs) {
+			// In dev, only use prebundled when it is at least as new as the source.
+			if (prebundledStat.mtimeMs >= sourceMtimeMs) {
 				return prebundledPath;
 			}
 		} catch {
-			if (app.isPackaged) {
-				throw new Error(
-					`${label} is missing from this app build (${prebundledPath}). Reinstall or update the app.`,
-				);
-			}
+			// Recompile below.
 		}
 	}
 

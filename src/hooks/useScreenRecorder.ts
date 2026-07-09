@@ -514,11 +514,17 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			const requireMicrophone = options.startup ? true : microphoneEnabled;
 			const requireCamera = options.startup ? false : webcamEnabled;
 
-			const result = await ensure({
-				requireMicrophone,
-				requireCamera,
-				requireAccessibility: true,
-			});
+			let result: Awaited<ReturnType<typeof ensure>>;
+			try {
+				result = await ensure({
+					requireMicrophone,
+					requireCamera,
+					requireAccessibility: true,
+				});
+			} catch (error) {
+				console.error("[permissions] Failed to ensure mac permissions:", error);
+				return false;
+			}
 
 			// Screen + accessibility are always required to record.
 			const blocking = result.missing.filter(

@@ -155,8 +155,9 @@ async function triggerScreenRecordingTccRegistration(): Promise<void> {
 	//    This is the reliable way to create the Privacy list entry.
 	try {
 		const helperPath = await ensureNativeCaptureHelperBinary();
+		// Interactive System Settings / Allow prompts can take well over 15s.
 		await execFileAsync(helperPath, ["--request-permissions"], {
-			timeout: 15000,
+			timeout: 60_000,
 			encoding: "utf8",
 		});
 	} catch {
