@@ -113,12 +113,76 @@ export async function getRecordingsDir() {
 	return targetDir;
 }
 
-export function getMacPrivacySettingsUrl(pane: "screen" | "accessibility" | "microphone"): string {
-	if (pane === "screen")
-		return "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
-	if (pane === "microphone")
-		return "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone";
-	return "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
+export type MacPrivacyPane = "screen" | "accessibility" | "microphone" | "camera";
+
+/**
+ * Deep-link URLs for macOS Privacy panes.
+ * Prefer the modern Settings app URLs (Ventura+), keep legacy System Preferences
+ * URLs as fallbacks for older macOS.
+ */
+export function getMacPrivacySettingsUrls(pane: MacPrivacyPane): string[] {
+	const modernExtension =
+		"x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension";
+	const legacySecurity = "x-apple.systempreferences:com.apple.preference.security";
+
+	switch (pane) {
+		case "screen":
+			return [
+				`${modernExtension}?Privacy_ScreenCapture`,
+				`${legacySecurity}?Privacy_ScreenCapture`,
+			];
+		case "microphone":
+			return [
+				`${modernExtension}?Privacy_Microphone`,
+				`${legacySecurity}?Privacy_Microphone`,
+			];
+		case "camera":
+			return [`${modernExtension}?Privacy_Camera`, `${legacySecurity}?Privacy_Camera`];
+		case "accessibility":
+			return [
+				`${modernExtension}?Privacy_Accessibility`,
+				`${legacySecurity}?Privacy_Accessibility`,
+			];
+		default:
+			return [`${modernExtension}?Privacy_ScreenCapture`];
+	}
+}
+
+export function getMacPrivacySettingsUrl(pane: MacPrivacyPane): string {
+	return getMacPrivacySettingsUrls(pane)[0];
+}
+
+/**
+ * Open the right Privacy pane. Tries modern Settings URLs first, then legacy.
+ * Uses `open` so deep links resolve even when shell.openExternal is picky.
+ */
+export async function openMacPrivacySettings(pane: MacPrivacyPane): Promise<void> {
+	const { execFile } = await import("node:child_process");
+	const { promisify } = await import("node:util");
+	const execFileAsync = promisify(execFile);
+	const { shell } = await import("electron");
+
+	const urls = getMacPrivacySettingsUrls(pane);
+	let lastError: unknown;
+
+	for (const url of urls) {
+		try {
+			await execFileAsync("open", [url], { timeout: 5000 });
+			return;
+		} catch (error) {
+			lastError = error;
+			try {
+				await shell.openExternal(url);
+				return;
+			} catch (shellError) {
+				lastError = shellError;
+			}
+		}
+	}
+
+	throw lastError instanceof Error
+		? lastError
+		: new Error(`Failed to open macOS privacy settings for ${pane}`);
 }
 
 export function approveUserPath(filePath: string | null | undefined): void {
@@ -129,4 +193,3 @@ export function approveUserPath(filePath: string | null | undefined): void {
 		// Ignore invalid paths; later reads will surface the underlying error.
 	}
 }
-

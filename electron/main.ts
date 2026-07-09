@@ -880,18 +880,37 @@ app.whenReady().then(async () => {
 	}
 
 	session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
-		const allowed = ["media", "audioCapture", "microphone", "camera", "videoCapture"];
+		const allowed = [
+			"media",
+			"audioCapture",
+			"microphone",
+			"camera",
+			"videoCapture",
+			"display-capture",
+			"mediaKeySystem",
+		];
 		return allowed.includes(permission);
 	});
 
 	session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-		const allowed = ["media", "audioCapture", "microphone", "camera", "videoCapture"];
+		const allowed = [
+			"media",
+			"audioCapture",
+			"microphone",
+			"camera",
+			"videoCapture",
+			"display-capture",
+			"mediaKeySystem",
+		];
 		callback(allowed.includes(permission));
 	});
 
 	session.defaultSession.setDevicePermissionHandler((_details) => true);
 
 	if (process.platform === "darwin") {
+		// Request mic/camera via Electron APIs (creates Privacy list entries).
+		// Screen recording cannot use askForMediaAccess — that is handled by
+		// ensureMacRecordingPermissions (CGRequestScreenCaptureAccess + desktopCapturer).
 		const cameraStatus = systemPreferences.getMediaAccessStatus("camera");
 		if (cameraStatus !== "granted") {
 			await systemPreferences.askForMediaAccess("camera");
@@ -900,6 +919,23 @@ app.whenReady().then(async () => {
 		const micStatus = systemPreferences.getMediaAccessStatus("microphone");
 		if (micStatus !== "granted") {
 			await systemPreferences.askForMediaAccess("microphone");
+		}
+
+		// Register for screen recording early so the app appears in System Settings
+		// before the user tries to record. Fire-and-forget; UI path re-checks.
+		try {
+			const { ensureMacRecordingPermissions } = await import(
+				"./ipc/recording/macPermissions"
+			);
+			void ensureMacRecordingPermissions({
+				requireMicrophone: true,
+				requireCamera: false,
+				requireAccessibility: true,
+			}).catch((error) => {
+				console.warn("[permissions] Early macOS permission request failed:", error);
+			});
+		} catch (error) {
+			console.warn("[permissions] Could not load macOS permission helper:", error);
 		}
 	} else if (process.platform === "win32") {
 		const cameraStatus = systemPreferences.getMediaAccessStatus("camera");

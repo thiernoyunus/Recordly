@@ -214,10 +214,7 @@ export function resolveBrowserCaptureCursorPolicy({
 export function shouldUseNativeWindowsCaptureForSource(
 	source: Pick<ProcessedDesktopSource, "id"> | null | undefined,
 ): boolean {
-	return (
-		source?.id?.startsWith("screen:") === true ||
-		source?.id?.startsWith("window:") === true
-	);
+	return source?.id?.startsWith("screen:") === true || source?.id?.startsWith("window:") === true;
 }
 
 export function createProcessedMicrophoneConstraints(
@@ -489,46 +486,84 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		micFallbackPauseIntervals.current = [];
 	}, []);
 
-	const preparePermissions = useCallback(async (options: { startup?: boolean } = {}) => {
-		const platform = await window.electronAPI.getPlatform();
-		if (platform !== "darwin") {
-			return true;
-		}
+	const preparePermissions = useCallback(
+		async (options: { startup?: boolean } = {}) => {
+			const platform = await window.electronAPI.getPlatform();
+			if (platform !== "darwin") {
+				return true;
+			}
 
-		const screenPermission = await window.electronAPI.getScreenRecordingPermissionStatus();
-		if (!screenPermission.success || screenPermission.status !== "granted") {
-			await window.electronAPI.openScreenRecordingPreferences();
+			// Always actively request + register with macOS first. Opening System
+			// Settings without this leaves an empty permission list (the classic
+			// "it told me to enable permission but I can't see the app" bug).
+			const ensure = window.electronAPI.ensureMacRecordingPermissions;
+			if (!ensure) {
+				// Older preload fallback — still try the status check path.
+				const screenPermission =
+					await window.electronAPI.getScreenRecordingPermissionStatus();
+				if (!screenPermission.success || screenPermission.status !== "granted") {
+					await window.electronAPI.openScreenRecordingPreferences();
+					return false;
+				}
+				return true;
+			}
+
+			// Always *request* mic/camera early so they appear in Privacy lists, but
+			// only *require* mic when the user has microphone capture enabled (or
+			// during startup so the first Record click is less likely to fail).
+			const requireMicrophone = options.startup ? true : microphoneEnabled;
+			const requireCamera = options.startup ? false : webcamEnabled;
+
+			const result = await ensure({
+				requireMicrophone,
+				requireCamera,
+				requireAccessibility: true,
+			});
+
+			// Screen + accessibility are always required to record.
+			const blocking = result.missing.filter(
+				(item) => item === "screen" || item === "accessibility",
+			);
+			const optionalMissing = result.missing.filter(
+				(item) => item === "microphone" || item === "camera",
+			);
+
+			if (blocking.length === 0) {
+				// Soft-warn for optional devices only when the user enabled them.
+				if (!options.startup && optionalMissing.length > 0 && result.message) {
+					console.warn(
+						"[permissions] Optional capture permission missing:",
+						optionalMissing,
+					);
+				}
+				return true;
+			}
+
+			const label = result.settingsLabel || (result.isPackaged ? "Recordly" : "Electron");
+			const guidance =
+				result.message ||
+				`Enable the missing permissions for "${label}" in System Settings → Privacy & Security, then fully quit and reopen the app.`;
+
+			if (blocking.includes("screen") || result.missing.includes("screen")) {
+				await window.electronAPI.openScreenRecordingPreferences();
+			} else if (result.missing.includes("microphone")) {
+				await window.electronAPI.openMicrophonePreferences?.();
+			} else if (blocking.includes("accessibility")) {
+				await window.electronAPI.openAccessibilityPreferences();
+			}
+
+			// Always explain what's missing after a real request so the user knows
+			// which name to look for (Electron in dev, Recordly when packaged).
 			alert(
 				options.startup
-					? "Recordly needs Screen Recording permission before you start. System Settings has been opened. After enabling it, quit and reopen Recordly."
-					: "Screen Recording permission is still missing. System Settings has been opened again. Enable it, then quit and reopen Recordly before recording.",
+					? `Recordly needs a few Mac permissions before recording.\n\n${guidance}`
+					: `Recording is blocked until permissions are enabled.\n\n${guidance}`,
 			);
+
 			return false;
-		}
-
-		const accessibilityPermission = await window.electronAPI.getAccessibilityPermissionStatus();
-		if (!accessibilityPermission.success) {
-			return false;
-		}
-
-		if (accessibilityPermission.trusted) {
-			return true;
-		}
-
-		const requestedAccessibility = await window.electronAPI.requestAccessibilityPermission();
-		if (requestedAccessibility.success && requestedAccessibility.trusted) {
-			return true;
-		}
-
-		await window.electronAPI.openAccessibilityPreferences();
-		alert(
-			options.startup
-				? "Recordly also needs Accessibility permission for cursor tracking. System Settings has been opened. After enabling it, quit and reopen Recordly."
-				: "Accessibility permission is still missing. System Settings has been opened again. Enable it, then quit and reopen Recordly before recording.",
-		);
-
-		return false;
-	}, []);
+		},
+		[microphoneEnabled, webcamEnabled],
+	);
 
 	const selectMimeType = useCallback(() => {
 		return selectRecordingMimeType();
@@ -977,10 +1012,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 			const webcamTrackSettings = webcamStream.current.getVideoTracks()[0]?.getSettings();
 			console.info("[webcam] negotiated capture settings:", webcamTrackSettings);
-			if (
-				webcamTrackSettings?.width &&
-				webcamTrackSettings.width < WEBCAM_WIDTH / 2
-			) {
+			if (webcamTrackSettings?.width && webcamTrackSettings.width < WEBCAM_WIDTH / 2) {
 				console.warn(
 					"[webcam] camera negotiated far below requested resolution; recording may be degraded",
 					webcamTrackSettings,

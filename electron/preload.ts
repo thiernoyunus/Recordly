@@ -632,8 +632,24 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	getScreenRecordingPermissionStatus: () => {
 		return ipcRenderer.invoke("get-screen-recording-permission-status");
 	},
+	ensureMacRecordingPermissions: (options?: {
+		requireMicrophone?: boolean;
+		requireCamera?: boolean;
+		requireAccessibility?: boolean;
+	}) => {
+		return ipcRenderer.invoke("ensure-mac-recording-permissions", options);
+	},
+	getMacPermissionSnapshot: () => {
+		return ipcRenderer.invoke("get-mac-permission-snapshot");
+	},
+	requestMicrophonePermission: () => {
+		return ipcRenderer.invoke("request-microphone-permission");
+	},
 	openScreenRecordingPreferences: () => {
 		return ipcRenderer.invoke("open-screen-recording-preferences");
+	},
+	openMicrophonePreferences: () => {
+		return ipcRenderer.invoke("open-microphone-preferences");
 	},
 	openAccessibilityPreferences: () => {
 		return ipcRenderer.invoke("open-accessibility-preferences");
@@ -676,6 +692,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	},
 	openAudioFilePicker: () => {
 		return ipcRenderer.invoke("open-audio-file-picker");
+	},
+	openMediaFilePicker: () => {
+		return ipcRenderer.invoke("open-media-file-picker");
 	},
 	openWhisperExecutablePicker: () => {
 		return ipcRenderer.invoke("open-whisper-executable-picker");

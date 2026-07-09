@@ -604,20 +604,64 @@ interface Window {
 			success: boolean;
 			trusted: boolean;
 			prompted: boolean;
+			settingsLabel?: string;
+			isPackaged?: boolean;
 			error?: string;
 		}>;
 		requestAccessibilityPermission: () => Promise<{
 			success: boolean;
 			trusted: boolean;
 			prompted: boolean;
+			settingsLabel?: string;
+			isPackaged?: boolean;
+			message?: string;
 			error?: string;
 		}>;
 		getScreenRecordingPermissionStatus: () => Promise<{
 			success: boolean;
 			status: string;
+			settingsLabel?: string;
+			isPackaged?: boolean;
+			error?: string;
+		}>;
+		ensureMacRecordingPermissions: (options?: {
+			requireMicrophone?: boolean;
+			requireCamera?: boolean;
+			requireAccessibility?: boolean;
+		}) => Promise<{
+			success: boolean;
+			screen: string;
+			microphone: string;
+			camera: string;
+			accessibilityTrusted: boolean;
+			requested: boolean;
+			settingsLabel: string;
+			isPackaged: boolean;
+			missing: Array<"screen" | "microphone" | "camera" | "accessibility">;
+			message?: string;
+			error?: string;
+		}>;
+		getMacPermissionSnapshot: () => Promise<{
+			success: boolean;
+			screen?: string;
+			microphone?: string;
+			camera?: string;
+			accessibilityTrusted?: boolean;
+			settingsLabel?: string;
+			isPackaged?: boolean;
+			error?: string;
+		}>;
+		requestMicrophonePermission: () => Promise<{
+			success: boolean;
+			granted: boolean;
+			status: string;
+			settingsLabel?: string;
+			isPackaged?: boolean;
+			message?: string;
 			error?: string;
 		}>;
 		openScreenRecordingPreferences: () => Promise<{ success: boolean; error?: string }>;
+		openMicrophonePreferences: () => Promise<{ success: boolean; error?: string }>;
 		openAccessibilityPreferences: () => Promise<{ success: boolean; error?: string }>;
 		saveExportedVideo: (
 			videoData: ArrayBuffer,
@@ -660,6 +704,7 @@ interface Window {
 			error?: string;
 		}>;
 		openAudioFilePicker: () => Promise<{ success: boolean; path?: string; canceled?: boolean }>;
+		openMediaFilePicker: () => Promise<{ success: boolean; path?: string; canceled?: boolean }>;
 		openWhisperExecutablePicker: () => Promise<{
 			success: boolean;
 			path?: string;

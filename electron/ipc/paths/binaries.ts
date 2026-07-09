@@ -4,10 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { app } from "electron";
-import {
-	nativeHelperMigrationPromise,
-	setNativeHelperMigrationPromise,
-} from "../state";
+import { nativeHelperMigrationPromise, setNativeHelperMigrationPromise } from "../state";
 
 const execFileAsync = promisify(execFile);
 
@@ -128,7 +125,11 @@ export function getCursorMonitorExePath(): string {
 async function migrateLegacyNativeHelperBinaries(): Promise<void> {
 	const legacyToCurrentPaths: Array<[string, string]> = [
 		[
-			path.join(app.getPath("userData"), "native-tools", "openscreen-screencapturekit-helper"),
+			path.join(
+				app.getPath("userData"),
+				"native-tools",
+				"openscreen-screencapturekit-helper",
+			),
 			getNativeCaptureHelperBinaryPath(),
 		],
 		[
@@ -182,11 +183,38 @@ export async function ensureSwiftHelperBinary(
 	label: string,
 	prebundledBinaryName?: string,
 ): Promise<string> {
+	const helperDir = path.dirname(binaryPath);
+	await fs.mkdir(helperDir, { recursive: true });
+
+	let sourceMtimeMs = 0;
+	try {
+		sourceMtimeMs = (await fs.stat(sourcePath)).mtimeMs;
+	} catch (error) {
+		throw new Error(`${label} source is unavailable: ${String(error)}`);
+	}
+
+	// Prefer a fresh userData build when source is newer than the prebundled
+	// binary (common during local development after helper source edits).
+	try {
+		const userDataStat = await fs.stat(binaryPath).catch(() => null);
+		if (userDataStat && userDataStat.mtimeMs >= sourceMtimeMs) {
+			await fs.access(binaryPath, fsConstants.X_OK);
+			return binaryPath;
+		}
+	} catch {
+		// Fall through to prebundled or recompile.
+	}
+
 	if (prebundledBinaryName) {
 		const prebundledPath = getPrebundledNativeHelperPath(prebundledBinaryName);
 		try {
 			await fs.access(prebundledPath, fsConstants.X_OK);
-			return prebundledPath;
+			const prebundledStat = await fs.stat(prebundledPath);
+			// Packaged builds always use the shipped binary.
+			// In dev, only use it when it is at least as new as the source.
+			if (app.isPackaged || prebundledStat.mtimeMs >= sourceMtimeMs) {
+				return prebundledPath;
+			}
 		} catch {
 			if (app.isPackaged) {
 				throw new Error(
@@ -194,24 +222,6 @@ export async function ensureSwiftHelperBinary(
 				);
 			}
 		}
-	}
-
-	const helperDir = path.dirname(binaryPath);
-	await fs.mkdir(helperDir, { recursive: true });
-
-	let shouldCompile = false;
-	try {
-		const [sourceStat, binaryStat] = await Promise.all([
-			fs.stat(sourcePath),
-			fs.stat(binaryPath).catch(() => null),
-		]);
-		shouldCompile = !binaryStat || sourceStat.mtimeMs > binaryStat.mtimeMs;
-	} catch (error) {
-		throw new Error(`${label} source is unavailable: ${String(error)}`);
-	}
-
-	if (!shouldCompile) {
-		return binaryPath;
 	}
 
 	try {

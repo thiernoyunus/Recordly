@@ -19,7 +19,7 @@ struct CaptureConfig: Codable {
 let targetCaptureFPS = 60
 let maxInlineAudioTailExtension = CMTime(seconds: 2.0, preferredTimescale: 600)
 
-final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
+final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOutputSampleBufferDelegate {
 	private let queue = DispatchQueue(label: "recordly.screencapturekit.video")
 	private var assetWriter: AVAssetWriter?
 	private var videoInput: AVAssetWriterInput?
@@ -53,8 +53,11 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 	private var capturesMicrophone = false
 	private var writesSystemAudioToSeparateTrack = false
 	private var writesMicrophoneToSeparateTrack = false
-
-	private let microphoneOutputTypeRawValue = 2
+	// Raw microphone capture. We deliberately avoid ScreenCaptureKit's
+	// captureMicrophone: it routes the mic through Apple's voice processing,
+	// which ducks all other system audio whenever the user speaks and heavily
+	// attenuates the recorded voice while system audio is playing.
+	private var microphoneCaptureSession: AVCaptureSession?
 
 	func startCapture(configJSON: String) async throws {
 		guard !isRecording else {
@@ -70,10 +73,15 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		let streamConfig = SCStreamConfiguration()
 		capturesSystemAudio = config.capturesSystemAudio ?? false
 		capturesMicrophone = config.capturesMicrophone ?? false
-		if capturesMicrophone && !supportsNativeMicrophoneCapture(streamConfig: streamConfig) {
-			fputs("MICROPHONE_CAPTURE_UNAVAILABLE\n", stderr)
-			fflush(stderr)
-			capturesMicrophone = false
+		var preparedMicrophoneSession: AVCaptureSession?
+		if capturesMicrophone {
+			do {
+				preparedMicrophoneSession = try buildMicrophoneCaptureSession(config: config)
+			} catch {
+				fputs("MICROPHONE_CAPTURE_UNAVAILABLE: \(error.localizedDescription)\n", stderr)
+				fflush(stderr)
+				capturesMicrophone = false
+			}
 		}
 		writesSystemAudioToSeparateTrack = capturesSystemAudio
 		writesMicrophoneToSeparateTrack = capturesSystemAudio && capturesMicrophone
@@ -82,17 +90,10 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		streamConfig.queueDepth = 6
 		streamConfig.pixelFormat = kCVPixelFormatType_32BGRA
 		streamConfig.showsCursor = false
-		streamConfig.capturesAudio = capturesSystemAudio || capturesMicrophone
+		streamConfig.capturesAudio = capturesSystemAudio
 		streamConfig.sampleRate = 48000
 		streamConfig.channelCount = 2
 		streamConfig.excludesCurrentProcessAudio = true
-
-		if capturesMicrophone {
-			streamConfig.setValue(true, forKey: "captureMicrophone")
-			if let microphoneDeviceId = Self.resolveMicrophoneCaptureDeviceID(config: config) {
-				streamConfig.setValue(microphoneDeviceId, forKey: "microphoneCaptureDeviceID")
-			}
-		}
 
 		let filter: SCContentFilter
 		let outputWidth: Int
@@ -243,17 +244,12 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		if capturesSystemAudio {
 			try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: queue)
 		}
-		if capturesMicrophone {
-			guard let microphoneOutputType = SCStreamOutputType(rawValue: microphoneOutputTypeRawValue) else {
-				throw NSError(
-					domain: "RecordlyCapture",
-					code: 17,
-					userInfo: [NSLocalizedDescriptionKey: "Microphone stream output type is unavailable"]
-				)
-			}
-			try stream.addStreamOutput(self, type: microphoneOutputType, sampleHandlerQueue: queue)
-		}
 		try await stream.startCapture()
+
+		if let microphoneSession = preparedMicrophoneSession {
+			microphoneCaptureSession = microphoneSession
+			microphoneSession.startRunning()
+		}
 
 		guard assetWriter.startWriting() else {
 			throw NSError(domain: "RecordlyCapture", code: 8, userInfo: [NSLocalizedDescriptionKey: assetWriter.error?.localizedDescription ?? "Unable to start video writing"])
@@ -336,18 +332,22 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			return
 		}
 
-		if outputType.rawValue == microphoneOutputTypeRawValue {
-			if let microphoneOnlyInput {
-				appendAudioSampleBuffer(sampleBuffer, to: microphoneOnlyInput, firstSampleTime: &firstMicrophoneSampleTime, presentationTime: presentationTime)
-			}
-			// Write mic to inline video track only if there's no system audio (avoids double-writing)
-			if !capturesSystemAudio, let inlineAudioInput, inlineAudioInput.isReadyForMoreMediaData {
-				appendAudioSampleBuffer(sampleBuffer, to: inlineAudioInput, firstSampleTime: &firstInlineAudioSampleTime, presentationTime: presentationTime)
-			}
-			return
-		}
-
 		return
+	}
+
+	// Raw microphone samples from AVCaptureSession. Timestamps share the host
+	// clock with ScreenCaptureKit, so the same video-anchored adjustment applies.
+	func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+		guard sessionStarted, sampleBuffer.isValid, isRecording else { return }
+		guard let presentationTime = adjustedPresentationTime(for: sampleBuffer, outputType: .audio) else { return }
+
+		if let microphoneOnlyInput {
+			appendAudioSampleBuffer(sampleBuffer, to: microphoneOnlyInput, firstSampleTime: &firstMicrophoneSampleTime, presentationTime: presentationTime)
+		}
+		// Write mic to inline video track only if there's no system audio (avoids double-writing)
+		if !capturesSystemAudio, let inlineAudioInput, inlineAudioInput.isReadyForMoreMediaData {
+			appendAudioSampleBuffer(sampleBuffer, to: inlineAudioInput, firstSampleTime: &firstInlineAudioSampleTime, presentationTime: presentationTime)
+		}
 	}
 
 	func stream(_ stream: SCStream, didStopWithError error: Error) {
@@ -359,6 +359,11 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		windowValidationTask?.cancel()
 		windowValidationTask = nil
 		trackedWindowId = nil
+
+		if let microphoneSession = microphoneCaptureSession {
+			microphoneSession.stopRunning()
+			microphoneCaptureSession = nil
+		}
 
 		if let activeStream = stream {
 			do {
@@ -420,6 +425,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		capturesMicrophone = false
 		writesSystemAudioToSeparateTrack = false
 		writesMicrophoneToSeparateTrack = false
+		didLogAudioAppendFailure = false
 		return path
 	}
 
@@ -497,6 +503,8 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		return videoEndTime + CMTimeMinimum(tailExtension, maxInlineAudioTailExtension)
 	}
 
+	private var didLogAudioAppendFailure = false
+
 	private func appendAudioSampleBuffer(_ sampleBuffer: CMSampleBuffer, to input: AVAssetWriterInput, firstSampleTime: inout CMTime?, presentationTime: CMTime) {
 		guard input.isReadyForMoreMediaData else { return }
 
@@ -513,6 +521,16 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 				lastInlineAudioPresentationTime = presentationTime
 				lastInlineAudioDuration = sampleBuffer.duration
 			}
+			if !appended && !didLogAudioAppendFailure {
+				didLogAudioAppendFailure = true
+				let detail = (input === microphoneOnlyInput ? "microphone" : "audio")
+				fputs("AUDIO_APPEND_FAILED (\(detail)): \(assetWriter?.error?.localizedDescription ?? "unknown error")\n", stderr)
+				fflush(stderr)
+			}
+		} else if !didLogAudioAppendFailure {
+			didLogAudioAppendFailure = true
+			fputs("AUDIO_RETIME_FAILED\n", stderr)
+			fflush(stderr)
 		}
 	}
 
@@ -525,29 +543,47 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		]
 	}
 
-	private static func resolveMicrophoneCaptureDeviceID(config: CaptureConfig) -> String? {
+	private static func resolveMicrophoneCaptureDevice(config: CaptureConfig) -> AVCaptureDevice? {
 		let audioDevices = AVCaptureDevice.devices(for: .audio)
 
 		if let microphoneLabel = config.microphoneLabel?.trimmingCharacters(in: .whitespacesAndNewlines), !microphoneLabel.isEmpty {
 			if let matchedDevice = audioDevices.first(where: { $0.localizedName == microphoneLabel }) {
-				return matchedDevice.uniqueID
+				return matchedDevice
 			}
 		}
 
 		if let microphoneDeviceId = config.microphoneDeviceId?.trimmingCharacters(in: .whitespacesAndNewlines), !microphoneDeviceId.isEmpty {
-			if audioDevices.contains(where: { $0.uniqueID == microphoneDeviceId }) {
-				return microphoneDeviceId
+			if let matchedDevice = audioDevices.first(where: { $0.uniqueID == microphoneDeviceId }) {
+				return matchedDevice
 			}
 		}
 
-		return nil
+		return AVCaptureDevice.default(for: .audio)
 	}
 
-	private func supportsNativeMicrophoneCapture(streamConfig: SCStreamConfiguration) -> Bool {
-		let supportsConfigSelector = streamConfig.responds(to: Selector(("setCaptureMicrophone:")))
-		let supportsDeviceSelector = streamConfig.responds(to: Selector(("setMicrophoneCaptureDeviceID:")))
-		let supportsOutputType = SCStreamOutputType(rawValue: microphoneOutputTypeRawValue) != nil
-		return supportsConfigSelector && supportsDeviceSelector && supportsOutputType
+	private func buildMicrophoneCaptureSession(config: CaptureConfig) throws -> AVCaptureSession {
+		guard let device = Self.resolveMicrophoneCaptureDevice(config: config) else {
+			throw NSError(domain: "RecordlyCapture", code: 17, userInfo: [NSLocalizedDescriptionKey: "No microphone device available"])
+		}
+
+		let session = AVCaptureSession()
+		session.beginConfiguration()
+
+		let input = try AVCaptureDeviceInput(device: device)
+		guard session.canAddInput(input) else {
+			throw NSError(domain: "RecordlyCapture", code: 18, userInfo: [NSLocalizedDescriptionKey: "Unable to add microphone input for \(device.localizedName)"])
+		}
+		session.addInput(input)
+
+		let output = AVCaptureAudioDataOutput()
+		output.setSampleBufferDelegate(self, queue: queue)
+		guard session.canAddOutput(output) else {
+			throw NSError(domain: "RecordlyCapture", code: 19, userInfo: [NSLocalizedDescriptionKey: "Unable to add microphone output"])
+		}
+		session.addOutput(output)
+
+		session.commitConfiguration()
+		return session
 	}
 
 	private func startWindowValidationIfNeeded() {
@@ -645,16 +681,69 @@ final class RecorderService {
 	}
 }
 
+// Force CoreGraphics Services initialization on the main thread.
+// Without this, SCContentFilter(desktopIndependentWindow:) crashes with
+// CGS_REQUIRE_INIT because CGS is never initialised in a CLI tool.
+let _ = CGMainDisplayID()
+
+// Dedicated permission probe used by the Electron host so the app is added to
+// macOS Privacy lists BEFORE System Settings is opened. Without this call, the
+// Screen Recording list can look empty even though Recordly is asking for access.
+if CommandLine.arguments.contains("--request-permissions") {
+	let wantsMicrophone = CommandLine.arguments.contains("--microphone")
+
+	let screenGranted: Bool
+	if CGPreflightScreenCaptureAccess() {
+		screenGranted = true
+	} else {
+		// This registers the process (or its responsible parent) in TCC and
+		// shows the system prompt / Settings entry on first request.
+		screenGranted = CGRequestScreenCaptureAccess()
+	}
+
+	var microphoneStatus = "not-requested"
+	if wantsMicrophone {
+		switch AVCaptureDevice.authorizationStatus(for: .audio) {
+		case .authorized:
+			microphoneStatus = "granted"
+		case .notDetermined:
+			let sem = DispatchSemaphore(value: 0)
+			var granted = false
+			AVCaptureDevice.requestAccess(for: .audio) { allowed in
+				granted = allowed
+				sem.signal()
+			}
+			sem.wait()
+			microphoneStatus = granted ? "granted" : "denied"
+		case .denied:
+			microphoneStatus = "denied"
+		case .restricted:
+			microphoneStatus = "restricted"
+		@unknown default:
+			microphoneStatus = "unknown"
+		}
+	}
+
+	let payload: [String: Any] = [
+		"screen": screenGranted ? "granted" : "denied",
+		"microphone": microphoneStatus,
+		"preflight": CGPreflightScreenCaptureAccess(),
+	]
+
+	if let data = try? JSONSerialization.data(withJSONObject: payload),
+	   let json = String(data: data, encoding: .utf8) {
+		fputs(json + "\n", stdout)
+		fflush(stdout)
+	}
+
+	exit(screenGranted ? 0 : 2)
+}
+
 guard CommandLine.arguments.count >= 2 else {
 	fputs("Missing config JSON\n", stderr)
 	fflush(stderr)
 	exit(1)
 }
-
-// Force CoreGraphics Services initialization on the main thread.
-// Without this, SCContentFilter(desktopIndependentWindow:) crashes with
-// CGS_REQUIRE_INIT because CGS is never initialised in a CLI tool.
-let _ = CGMainDisplayID()
 
 // Pre-flight check: ensure screen recording permission is granted before
 // attempting capture. On macOS 15+, a one-session grant may expire after the
@@ -670,6 +759,10 @@ if !CGPreflightScreenCaptureAccess() {
 }
 
 // Pre-flight check for microphone access when mic capture is requested.
+// On .notDetermined we must call requestAccess: macOS attributes the request
+// to the responsible process (the app / "node" in dev) and shows the system
+// prompt, creating the correct Privacy & Security entry. Failing hard here
+// without asking leaves the permission permanently undecided and undecidable.
 if let configData = CommandLine.arguments[1].data(using: .utf8),
    let config = try? JSONDecoder().decode(CaptureConfig.self, from: configData),
    config.capturesMicrophone == true {
