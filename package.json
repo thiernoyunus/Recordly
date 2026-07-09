@@ -15,7 +15,8 @@
 	"version": "1.3.4",
 	"type": "module",
 	"scripts": {
-		"dev": "vite --config vite.config.ts",
+		"dev": "node scripts/ensure-vite-cache.mjs && vite --config vite.config.ts",
+		"dev:clean": "node scripts/ensure-vite-cache.mjs --force && node -e \"import('node:fs').then(({rmSync})=>{rmSync('dist',{recursive:true,force:true});rmSync('dist-electron',{recursive:true,force:true});})\" && vite --force --config vite.config.ts",
 		"postinstall": "node scripts/postinstall.mjs",
 		"build": "npm run build:platform-native-helpers && tsc && vite build --config vite.config.ts && npm run normalize:electron-main-cjs && npm run smoke:electron-main-cjs && electron-builder",
 		"lint": "biome check .",

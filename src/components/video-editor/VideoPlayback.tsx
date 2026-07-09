@@ -3502,7 +3502,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 								className="absolute"
 								style={{
 									display: webcam.enabled ? "block" : "none",
-									// Webcam stays above screen-placed B-roll; full B-roll covers it via higher z later if needed.
+									// Webcam above screen-only B-roll (z=2). Full-frame B-roll uses z=4 and covers this.
 									zIndex: 3,
 									pointerEvents: webcamBubbleDraggable ? "auto" : "none",
 									cursor: webcamBubbleDraggable ? "grab" : undefined,

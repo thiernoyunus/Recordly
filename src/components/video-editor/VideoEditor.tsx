@@ -7064,7 +7064,9 @@ export default function VideoEditor() {
 											{t("timeline.audio.label")}
 										</DropdownMenuItem>
 										<DropdownMenuItem
-											onClick={() => {
+											onSelect={() => {
+												// Open the native picker after the menu finishes closing.
+												// Opening it in the same click can fail silently on macOS.
 												const nextTrackIndex =
 													brollRegions.length > 0
 														? Math.max(
@@ -7074,7 +7076,21 @@ export default function VideoEditor() {
 																),
 															) + 1
 														: 0;
-												timelineRef.current?.addBroll(nextTrackIndex);
+												window.setTimeout(() => {
+													const addBroll = timelineRef.current?.addBroll;
+													if (!addBroll) {
+														console.error(
+															"[broll] timeline addBroll is not available",
+														);
+														return;
+													}
+													void addBroll(nextTrackIndex).catch((error) => {
+														console.error(
+															"[broll] addBroll failed:",
+															error,
+														);
+													});
+												}, 100);
 											}}
 											className="text-muted-foreground hover:text-foreground hover:bg-foreground/10 cursor-pointer"
 										>

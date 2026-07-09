@@ -1,5 +1,5 @@
 import path from "node:path";
-import { dialog, ipcMain } from "electron";
+import { BrowserWindow, dialog, ipcMain } from "electron";
 import { generateAutoCaptionsFromVideo } from "../captions/generate";
 import {
 	deleteWhisperSmallModel,
@@ -112,10 +112,12 @@ export function registerCaptionHandlers() {
 		}
 	});
 
-	ipcMain.handle("open-media-file-picker", async () => {
+	ipcMain.handle("open-media-file-picker", async (event) => {
 		try {
-			const result = await dialog.showOpenDialog({
-				title: "Select Image or Video",
+			const parentWindow =
+				BrowserWindow.fromWebContents(event.sender) ?? BrowserWindow.getFocusedWindow();
+			const dialogOptions = {
+				title: "Select Image or Video for B-roll",
 				filters: [
 					{
 						name: "Media Files",
@@ -136,8 +138,12 @@ export function registerCaptionHandlers() {
 					},
 					{ name: "All Files", extensions: ["*"] },
 				],
-				properties: ["openFile"],
-			});
+				properties: ["openFile" as const],
+			};
+			// Attach to the editor window so the chooser is not hidden behind it.
+			const result = parentWindow
+				? await dialog.showOpenDialog(parentWindow, dialogOptions)
+				: await dialog.showOpenDialog(dialogOptions);
 
 			if (result.canceled || result.filePaths.length === 0) {
 				return { success: false, canceled: true };

@@ -8,6 +8,7 @@ import { timelineNotifications } from "../utils/timelineNotifications";
 interface MediaFilePickerResult {
 	success: boolean;
 	path?: string;
+	canceled?: boolean;
 }
 
 interface TimelineBrollActionsDeps {
@@ -34,7 +35,13 @@ interface UseTimelineBrollActionsParams {
 }
 
 async function defaultOpenFilePicker(): Promise<MediaFilePickerResult | null | undefined> {
-	return window.electronAPI.openMediaFilePicker();
+	const picker = window.electronAPI?.openMediaFilePicker;
+	if (typeof picker !== "function") {
+		throw new Error(
+			"Media file picker is not available. Restart Recordly (fully quit with Cmd+Q, then run npm run dev again).",
+		);
+	}
+	return picker();
 }
 
 async function defaultProbeMediaDurationMs(mediaPath: string): Promise<number> {
@@ -107,55 +114,82 @@ export function useTimelineBrollActions({
 
 	const handleAddBroll = useCallback(
 		async (preferredTrackIndex?: number) => {
-			if (!videoDuration || videoDuration === 0 || totalMs === 0 || !onBrollAdded) {
-				return;
-			}
-
-			const result = await deps.openFilePicker();
-			if (!result?.success || !result.path) {
-				return;
-			}
-
-			const mediaPath = result.path;
-			const mediaDurationMs = await deps.probeMediaDurationMs(mediaPath);
-			if (mediaDurationMs <= 0) {
+			if (!onBrollAdded) {
 				deps.reportError(
-					"Could not read media file",
-					"The selected file may be corrupted or in an unsupported format.",
+					"Cannot add B-roll",
+					"The editor is not ready to add B-roll yet. Open a recording in the editor and try again.",
 				);
 				return;
 			}
 
-			const startPos = Math.max(0, Math.min(currentTimeMs, totalMs));
-			if (totalMs - startPos <= 0) {
+			if (!videoDuration || videoDuration === 0 || totalMs === 0) {
 				deps.reportError(
-					"Cannot place B-roll here",
-					"There is no remaining space at the current playhead position.",
+					"Cannot add B-roll",
+					"Load a video recording first, then add B-roll on the timeline.",
 				);
 				return;
 			}
 
-			// Reuse audio placement so overlapping B-roll stacks on a new track.
-			const placement = resolveAudioPlacement({
-				audioRegions: brollRegions,
-				startPos,
-				totalMs,
-				audioDurationMs: mediaDurationMs,
-				preferredTrackIndex,
-			});
-			if (!placement) {
-				deps.reportError(
-					"Cannot place B-roll here",
-					"B-roll already exists at this location or not enough space available.",
-				);
-				return;
-			}
+			try {
+				const result = await deps.openFilePicker();
+				if (result?.canceled) {
+					return;
+				}
+				if (!result?.success || !result.path) {
+					if (result && result.success === false && !result.canceled) {
+						deps.reportError(
+							"Could not open file picker",
+							"Recordly could not open the file chooser. Fully quit the app and restart it.",
+						);
+					}
+					return;
+				}
 
-			onBrollAdded(
-				{ start: startPos, end: startPos + placement.durationMs },
-				mediaPath,
-				placement.trackIndex,
-			);
+				const mediaPath = result.path;
+				const mediaDurationMs = await deps.probeMediaDurationMs(mediaPath);
+				if (mediaDurationMs <= 0) {
+					deps.reportError(
+						"Could not read media file",
+						"The selected file may be corrupted or in an unsupported format.",
+					);
+					return;
+				}
+
+				const startPos = Math.max(0, Math.min(currentTimeMs, totalMs));
+				if (totalMs - startPos <= 0) {
+					deps.reportError(
+						"Cannot place B-roll here",
+						"There is no remaining space at the current playhead position. Move the playhead earlier and try again.",
+					);
+					return;
+				}
+
+				// Reuse audio placement so overlapping B-roll stacks on a new track.
+				const placement = resolveAudioPlacement({
+					audioRegions: brollRegions,
+					startPos,
+					totalMs,
+					audioDurationMs: mediaDurationMs,
+					preferredTrackIndex,
+				});
+				if (!placement) {
+					deps.reportError(
+						"Cannot place B-roll here",
+						"B-roll already exists at this location or not enough space available.",
+					);
+					return;
+				}
+
+				onBrollAdded(
+					{ start: startPos, end: startPos + placement.durationMs },
+					mediaPath,
+					placement.trackIndex,
+				);
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				console.error("[broll] Failed to add B-roll:", error);
+				deps.reportError("Could not add B-roll", message);
+			}
 		},
 		[videoDuration, totalMs, onBrollAdded, deps, currentTimeMs, brollRegions],
 	);
