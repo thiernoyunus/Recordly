@@ -140,6 +140,13 @@ export function useAudioPreviewSync({
 				? 0
 				: Math.max(0, trackGain * Math.max(0, Math.min(1, previewVolume)));
 
+			// createMediaElementSource permanently breaks preservesPitch in Chromium.
+			// Only route through Web Audio when we actually need gain above 100%.
+			if (effectiveGain <= 1.0 && !sourceAudioGainNodesRef.current.has(audioPath)) {
+				audio.volume = effectiveGain;
+				return;
+			}
+
 			try {
 				const gainNode = ensureSourceTrackGainNode(audioPath, audio);
 				gainNode.gain.value = effectiveGain;

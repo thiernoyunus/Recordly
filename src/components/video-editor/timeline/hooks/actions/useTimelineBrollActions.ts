@@ -47,7 +47,12 @@ async function defaultProbeMediaDurationMs(mediaPath: string): Promise<number> {
 		const video = document.createElement("video");
 		video.preload = "metadata";
 		video.muted = true;
+		let timeoutId: ReturnType<typeof setTimeout> | undefined;
 		const cleanup = () => {
+			if (timeoutId !== undefined) {
+				clearTimeout(timeoutId);
+				timeoutId = undefined;
+			}
 			video.removeAttribute("src");
 			video.load();
 			resolved.revoke();
@@ -72,6 +77,10 @@ async function defaultProbeMediaDurationMs(mediaPath: string): Promise<number> {
 			},
 			{ once: true },
 		);
+		timeoutId = setTimeout(() => {
+			resolve(0);
+			cleanup();
+		}, 10_000);
 		video.src = resolved.src;
 	});
 }

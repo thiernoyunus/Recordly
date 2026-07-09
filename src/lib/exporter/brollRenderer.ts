@@ -107,7 +107,11 @@ async function seekVideoElement(video: HTMLVideoElement, timeSec: number): Promi
 		return;
 	}
 	await new Promise<void>((resolve) => {
+		let timeoutId: ReturnType<typeof setTimeout> | undefined;
 		const onSeeked = () => {
+			if (timeoutId !== undefined) {
+				clearTimeout(timeoutId);
+			}
 			video.removeEventListener("seeked", onSeeked);
 			resolve();
 		};
@@ -117,9 +121,10 @@ async function seekVideoElement(video: HTMLVideoElement, timeSec: number): Promi
 		} catch {
 			video.removeEventListener("seeked", onSeeked);
 			resolve();
+			return;
 		}
 		// Safety timeout if seek never fires.
-		window.setTimeout(() => {
+		timeoutId = setTimeout(() => {
 			video.removeEventListener("seeked", onSeeked);
 			resolve();
 		}, 250);

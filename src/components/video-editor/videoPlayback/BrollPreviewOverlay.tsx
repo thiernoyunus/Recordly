@@ -145,8 +145,10 @@ function BrollPreviewItem({
 			}
 		}
 		if (isPlaying) {
-			void video.play().catch(() => undefined);
-		} else {
+			if (video.paused) {
+				void video.play().catch(() => undefined);
+			}
+		} else if (!video.paused) {
 			video.pause();
 		}
 	}, [region.mediaKind, region.startMs, timeMs, isPlaying, src]);
