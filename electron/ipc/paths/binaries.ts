@@ -4,10 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { app } from "electron";
-import {
-	nativeHelperMigrationPromise,
-	setNativeHelperMigrationPromise,
-} from "../state";
+import { nativeHelperMigrationPromise, setNativeHelperMigrationPromise } from "../state";
 
 const execFileAsync = promisify(execFile);
 
@@ -128,7 +125,11 @@ export function getCursorMonitorExePath(): string {
 async function migrateLegacyNativeHelperBinaries(): Promise<void> {
 	const legacyToCurrentPaths: Array<[string, string]> = [
 		[
-			path.join(app.getPath("userData"), "native-tools", "openscreen-screencapturekit-helper"),
+			path.join(
+				app.getPath("userData"),
+				"native-tools",
+				"openscreen-screencapturekit-helper",
+			),
 			getNativeCaptureHelperBinaryPath(),
 		],
 		[
@@ -182,36 +183,65 @@ export async function ensureSwiftHelperBinary(
 	label: string,
 	prebundledBinaryName?: string,
 ): Promise<string> {
-	if (prebundledBinaryName) {
+	// Packaged builds never compile from Swift sources (they may not ship).
+	// Prefer the prebundled helper immediately so a missing source path cannot
+	// crash production startup.
+	if (app.isPackaged && prebundledBinaryName) {
 		const prebundledPath = getPrebundledNativeHelperPath(prebundledBinaryName);
 		try {
 			await fs.access(prebundledPath, fsConstants.X_OK);
 			return prebundledPath;
 		} catch {
-			if (app.isPackaged) {
-				throw new Error(
-					`${label} is missing from this app build (${prebundledPath}). Reinstall or update the app.`,
-				);
-			}
+			throw new Error(
+				`${label} is missing from this app build (${prebundledPath}). Reinstall or update the app.`,
+			);
 		}
 	}
 
 	const helperDir = path.dirname(binaryPath);
 	await fs.mkdir(helperDir, { recursive: true });
 
-	let shouldCompile = false;
+	let sourceMtimeMs = 0;
 	try {
-		const [sourceStat, binaryStat] = await Promise.all([
-			fs.stat(sourcePath),
-			fs.stat(binaryPath).catch(() => null),
-		]);
-		shouldCompile = !binaryStat || sourceStat.mtimeMs > binaryStat.mtimeMs;
+		sourceMtimeMs = (await fs.stat(sourcePath)).mtimeMs;
 	} catch (error) {
+		// Dev fallback: if source is missing but a prebundled binary exists, use it.
+		if (prebundledBinaryName) {
+			const prebundledPath = getPrebundledNativeHelperPath(prebundledBinaryName);
+			try {
+				await fs.access(prebundledPath, fsConstants.X_OK);
+				return prebundledPath;
+			} catch {
+				// fall through to original error
+			}
+		}
 		throw new Error(`${label} source is unavailable: ${String(error)}`);
 	}
 
-	if (!shouldCompile) {
-		return binaryPath;
+	// Prefer a fresh userData build when source is newer than the prebundled
+	// binary (common during local development after helper source edits).
+	try {
+		const userDataStat = await fs.stat(binaryPath).catch(() => null);
+		if (userDataStat && userDataStat.mtimeMs >= sourceMtimeMs) {
+			await fs.access(binaryPath, fsConstants.X_OK);
+			return binaryPath;
+		}
+	} catch {
+		// Fall through to prebundled or recompile.
+	}
+
+	if (prebundledBinaryName) {
+		const prebundledPath = getPrebundledNativeHelperPath(prebundledBinaryName);
+		try {
+			await fs.access(prebundledPath, fsConstants.X_OK);
+			const prebundledStat = await fs.stat(prebundledPath);
+			// In dev, only use prebundled when it is at least as new as the source.
+			if (prebundledStat.mtimeMs >= sourceMtimeMs) {
+				return prebundledPath;
+			}
+		} catch {
+			// Recompile below.
+		}
 	}
 
 	try {
