@@ -43,9 +43,12 @@ export function looksLikeAnnexB(data: Uint8Array): boolean {
 /**
  * Convert length-prefixed (AVCC) NAL units to Annex B by inserting start codes.
  * Returns null when the buffer cannot be parsed as AVCC (so callers can fall back).
+ *
+ * Important: do NOT early-return based on `looksLikeAnnexB`. An AVCC length of
+ * 256–511 is `0x00 0x00 0x01 xx`, which is a false-positive Annex B start code.
  */
 export function convertAvccToAnnexB(data: Uint8Array): Uint8Array | null {
-	if (data.byteLength < 4 || looksLikeAnnexB(data)) {
+	if (data.byteLength < 4) {
 		return null;
 	}
 
@@ -66,6 +69,10 @@ export function convertAvccToAnnexB(data: Uint8Array): Uint8Array | null {
 			return null;
 		}
 
+		// Annex B streams that start with a start code will usually fail AVCC
+		// partition (NAL lengths land mid-stream). Reject if the "NAL" body itself
+		// is only a start code with no payload-like content when length is tiny
+		// and looks like start codes — still allow real short NALs.
 		const startCode = new Uint8Array(START_CODE_4);
 		const nal = data.subarray(offset, offset + nalLength);
 		parts.push(startCode, nal);
@@ -89,20 +96,21 @@ export function convertAvccToAnnexB(data: Uint8Array): Uint8Array | null {
 }
 
 /**
- * Ensure the chunk is Annex B. Passes through already-Annex-B data; converts AVCC
- * when possible; otherwise returns the original buffer unchanged.
+ * Ensure the chunk is Annex B. Prefer a successful AVCC parse first (avoids
+ * false Annex B matches when the first length is 256–511), then pass through
+ * true Annex B, otherwise return the original buffer unchanged.
  */
 export function ensureAnnexBChunk(data: Uint8Array): {
 	data: Uint8Array;
 	format: "annexb" | "avcc-converted" | "unknown";
 } {
-	if (looksLikeAnnexB(data)) {
-		return { data, format: "annexb" };
-	}
-
 	const converted = convertAvccToAnnexB(data);
 	if (converted) {
 		return { data: converted, format: "avcc-converted" };
+	}
+
+	if (looksLikeAnnexB(data)) {
+		return { data, format: "annexb" };
 	}
 
 	return { data, format: "unknown" };

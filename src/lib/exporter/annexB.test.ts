@@ -43,4 +43,24 @@ describe("annexB helpers", () => {
 		expect(ensured.format).toBe("avcc-converted");
 		expect(looksLikeAnnexB(ensured.data)).toBe(true);
 	});
+
+	it("converts AVCC whose length bytes look like an Annex B start code", () => {
+		// NAL length 258 = 0x00000102 → first three bytes are 00 00 01 (false Annex B).
+		const largeNal = new Uint8Array(258);
+		largeNal[0] = 0x65;
+		const largeAvcc = new Uint8Array(4 + largeNal.byteLength);
+		largeAvcc[0] = 0;
+		largeAvcc[1] = 0;
+		largeAvcc[2] = 1;
+		largeAvcc[3] = 2;
+		largeAvcc.set(largeNal, 4);
+
+		// Old looksLikeAnnexB-first path would mis-classify this as Annex B.
+		expect(looksLikeAnnexB(largeAvcc)).toBe(true);
+		const ensured = ensureAnnexBChunk(largeAvcc);
+		expect(ensured.format).toBe("avcc-converted");
+		expect(looksLikeAnnexB(ensured.data)).toBe(true);
+		expect(Array.from(ensured.data.subarray(0, 4))).toEqual([0, 0, 0, 1]);
+		expect(ensured.data.byteLength).toBe(4 + largeNal.byteLength);
+	});
 });

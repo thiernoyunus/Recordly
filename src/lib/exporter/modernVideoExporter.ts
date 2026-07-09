@@ -2,7 +2,6 @@ import type {
 	AnnotationRegion,
 	AudioRegion,
 	AutoCaptionSettings,
-	BRollRegion,
 	CaptionCue,
 	ClipRegion,
 	CropRegion,
@@ -155,7 +154,6 @@ interface VideoExporterConfig extends ExportConfig {
 	zoomClassicMode?: boolean;
 	frame?: string | null;
 	audioRegions?: AudioRegion[];
-	brollRegions?: BRollRegion[];
 	clipRegions?: ClipRegion[];
 	sourceAudioFallbackPaths?: string[];
 	sourceAudioFallbackStartDelayMsByPath?: Record<string, number>;
@@ -384,6 +382,9 @@ export class ModernVideoExporter {
 		// pipe / demux error, retry the whole export once on the WebCodecs path.
 		let forceWebCodecsOnly = false;
 		let retriedWithoutNative = false;
+		// cleanup() clears lastNativeExportError; keep the original Breeze failure
+		// across the WebCodecs retry so the final error still mentions it.
+		let savedNativeExportError: string | null = null;
 
 		while (true) {
 			let shouldRetryWithReadableFileSource = false;
@@ -420,6 +421,9 @@ export class ModernVideoExporter {
 						prefersNativeStaticLayoutBeforeBreeze);
 				if (!forceWebCodecsOnly) {
 					this.lastNativeExportError = null;
+					savedNativeExportError = null;
+				} else if (savedNativeExportError) {
+					this.lastNativeExportError = savedNativeExportError;
 				}
 
 				let stageStartedAt = this.getNowMs();
@@ -637,7 +641,6 @@ export class ModernVideoExporter {
 					videoWidth: videoInfo.width,
 					videoHeight: videoInfo.height,
 					annotationRegions: this.config.annotationRegions,
-					brollRegions: this.config.brollRegions,
 					autoCaptions: this.config.autoCaptions,
 					autoCaptionSettings: this.config.autoCaptionSettings,
 					speedRegions: this.config.speedRegions,
@@ -793,6 +796,7 @@ export class ModernVideoExporter {
 							forceWebCodecsOnly = true;
 							shouldRetryWithoutNative = true;
 							this.lastNativeExportError = nativeFailure;
+							savedNativeExportError = nativeFailure;
 							console.warn(
 								`[VideoExporter] ${NATIVE_EXPORT_ENGINE_NAME} finalize failed; retrying full export with WebCodecs.`,
 								nativeFailure,
@@ -962,6 +966,7 @@ export class ModernVideoExporter {
 					forceWebCodecsOnly = true;
 					shouldRetryWithoutNative = true;
 					this.lastNativeExportError = resolvedMessage;
+					savedNativeExportError = resolvedMessage;
 					console.warn(
 						`[VideoExporter] ${NATIVE_EXPORT_ENGINE_NAME} failed mid-export; retrying full export with WebCodecs.`,
 						resolvedError,
@@ -979,6 +984,9 @@ export class ModernVideoExporter {
 						error,
 					);
 				} else {
+					if (savedNativeExportError && !this.lastNativeExportError) {
+						this.lastNativeExportError = savedNativeExportError;
+					}
 					console.error("Export error:", error);
 					return {
 						success: false,
@@ -1666,9 +1674,6 @@ export class ModernVideoExporter {
 		}
 		if ((this.config.annotationRegions ?? []).length > 0) {
 			reasons.push("unsupported-annotation-overlay");
-		}
-		if ((this.config.brollRegions ?? []).length > 0) {
-			reasons.push("unsupported-broll-overlay");
 		}
 		if ((this.config.autoCaptions ?? []).length > 0) {
 			reasons.push("unsupported-caption-overlay");
@@ -2711,6 +2716,16 @@ export class ModernVideoExporter {
 			return false;
 		}
 
+		// Breeze stream-copy is H.264 Annex B only — never silently rewrite HEVC/AV1.
+		if (
+			typeof this.config.codec === "string" &&
+			this.config.codec.length > 0 &&
+			!this.config.codec.toLowerCase().startsWith("avc")
+		) {
+			this.lastNativeExportError = `${NATIVE_EXPORT_ENGINE_NAME} export only supports H.264 (AVC) codecs.`;
+			return false;
+		}
+
 		// Prefer compatible High@L4.x profiles for 1080p-class portrait exports.
 		// Level 5.2 (avc1.640034) is often overkill and has failed on VideoToolbox
 		// for some vertical sizes, producing a broken pipe into FFmpeg.
@@ -2879,7 +2894,11 @@ export class ModernVideoExporter {
 		});
 		// Key every ~2s (and always frame 0) so FFmpeg can recover if a mid-stream
 		// packet is lost and so the pipe starts with SPS/PPS-bearing IDR frames.
-		const keyFrameEvery = Math.max(1, Math.round(this.config.frameRate * 2));
+		const frameRate =
+			Number.isFinite(this.config.frameRate) && this.config.frameRate > 0
+				? this.config.frameRate
+				: 30;
+		const keyFrameEvery = Math.max(1, Math.round(frameRate * 2));
 		this.nativeH264Encoder.encode(frame, {
 			keyFrame: frameIndex === 0 || frameIndex % keyFrameEvery === 0,
 		});
