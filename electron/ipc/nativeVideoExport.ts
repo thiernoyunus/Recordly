@@ -699,21 +699,37 @@ export function buildEditedTrackSourceAudioFilter(
  * FFmpeg receives a pre-encoded Annex B H.264 stream on stdin (produced by the
  * browser's hardware VideoEncoder) and copies it straight into an MP4 container
  * — no re-encoding step, no raw pixel IPC traffic.
+ *
+ * Notes:
+ * - Use `-framerate` (not only `-r`) so the raw H.264 demuxer stamps PTS.
+ * - Larger probesize helps FFmpeg find the first SPS/PPS on a live pipe.
+ * - `+genpts` recovers timestamps when the elementary stream has none.
  */
 export function buildNativeH264StreamExportArgs(config: {
 	frameRate: number;
 	outputPath: string;
 }): string[] {
+	const frameRate =
+		Number.isFinite(config.frameRate) && config.frameRate > 0 ? config.frameRate : 30;
+
 	return [
 		"-y",
 		"-hide_banner",
 		"-loglevel",
 		"error",
+		"-fflags",
+		"+genpts+discardcorrupt",
+		"-probesize",
+		"5M",
+		"-analyzeduration",
+		"5M",
 		// Input 0: pre-encoded H.264 Annex B stream from browser VideoEncoder via stdin
 		"-f",
 		"h264",
+		"-framerate",
+		String(frameRate),
 		"-r",
-		String(config.frameRate),
+		String(frameRate),
 		"-i",
 		"pipe:0",
 		"-an", // audio handled separately by muxNativeVideoExportAudio

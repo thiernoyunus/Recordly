@@ -2,6 +2,7 @@ import type {
 	AnnotationRegion,
 	AudioRegion,
 	AutoCaptionSettings,
+	BRollRegion,
 	CaptionCue,
 	ClipRegion,
 	CropRegion,
@@ -52,6 +53,7 @@ import {
 	DEFAULT_WALLPAPER_RELATIVE_PATH,
 	isVideoWallpaperSource,
 } from "@/lib/wallpapers";
+import { ensureAnnexBChunk } from "./annexB";
 import { AudioProcessor, isAacAudioEncodingSupported } from "./audioEncoder";
 import {
 	normalizeLightningRuntimePlatform,
@@ -153,6 +155,7 @@ interface VideoExporterConfig extends ExportConfig {
 	zoomClassicMode?: boolean;
 	frame?: string | null;
 	audioRegions?: AudioRegion[];
+	brollRegions?: BRollRegion[];
 	clipRegions?: ClipRegion[];
 	sourceAudioFallbackPaths?: string[];
 	sourceAudioFallbackStartDelayMsByPath?: Record<string, number>;
@@ -377,33 +380,47 @@ export class ModernVideoExporter {
 	async export(): Promise<ExportResult> {
 		let preferReadableFileSource = false;
 		let retriedWithReadableFileSource = false;
+		// When Breeze (native H.264 stream-copy) fails mid-export with a broken
+		// pipe / demux error, retry the whole export once on the WebCodecs path.
+		let forceWebCodecsOnly = false;
+		let retriedWithoutNative = false;
 
 		while (true) {
 			let shouldRetryWithReadableFileSource = false;
+			let shouldRetryWithoutNative = false;
 			try {
 				this.cleanup();
 				this.cancelled = false;
 				this.encoderError = null;
 				this.nativeEncoderError = null;
+				this.nativeWriteError = null;
 				this.nativeStaticLayoutSkipReason = null;
 				this.nativeStaticLayoutSkipReasons = [];
 				this.nativeStaticLayoutBackgroundSkipReason = null;
 				this.totalExportStartTimeMs = this.getNowMs();
-				const backendPreference = this.config.backendPreference ?? "auto";
+				const configuredBackendPreference = this.config.backendPreference ?? "auto";
+				const backendPreference = forceWebCodecsOnly
+					? "webcodecs"
+					: configuredBackendPreference;
 				const runtimePlatform = this.getRuntimePlatform();
 				let useNativeEncoder = false;
 				let triedNativeStaticLayoutWithProbe = false;
 				const prefersNativeStaticLayoutBeforeBreeze =
+					!forceWebCodecsOnly &&
 					shouldPreferNativeStaticLayoutBeforeBreeze(runtimePlatform, backendPreference);
 				const shouldTryNativeStaticLayout =
-					backendPreference === "breeze" ||
-					this.config.experimentalNvidiaCudaExport === true ||
-					prefersNativeStaticLayoutBeforeBreeze;
+					!forceWebCodecsOnly &&
+					(backendPreference === "breeze" ||
+						this.config.experimentalNvidiaCudaExport === true ||
+						prefersNativeStaticLayoutBeforeBreeze);
 				let shouldDeferNativeEncoderStart =
-					backendPreference === "breeze" ||
-					this.config.experimentalNvidiaCudaExport === true ||
-					prefersNativeStaticLayoutBeforeBreeze;
-				this.lastNativeExportError = null;
+					!forceWebCodecsOnly &&
+					(backendPreference === "breeze" ||
+						this.config.experimentalNvidiaCudaExport === true ||
+						prefersNativeStaticLayoutBeforeBreeze);
+				if (!forceWebCodecsOnly) {
+					this.lastNativeExportError = null;
+				}
 
 				let stageStartedAt = this.getNowMs();
 				if (shouldDeferNativeEncoderStart) {
@@ -620,6 +637,7 @@ export class ModernVideoExporter {
 					videoWidth: videoInfo.width,
 					videoHeight: videoInfo.height,
 					annotationRegions: this.config.annotationRegions,
+					brollRegions: this.config.brollRegions,
 					autoCaptions: this.config.autoCaptions,
 					autoCaptionSettings: this.config.autoCaptionSettings,
 					speedRegions: this.config.speedRegions,
@@ -764,140 +782,191 @@ export class ModernVideoExporter {
 						!finishResult.success ||
 						(!finishResult.tempFilePath && !finishResult.blob)
 					) {
+						const nativeFailure =
+							finishResult.error || `${NATIVE_EXPORT_ENGINE_NAME} export failed`;
+						if (
+							!forceWebCodecsOnly &&
+							!retriedWithoutNative &&
+							this.shouldRetryNativeFailureWithWebCodecs(nativeFailure)
+						) {
+							retriedWithoutNative = true;
+							forceWebCodecsOnly = true;
+							shouldRetryWithoutNative = true;
+							this.lastNativeExportError = nativeFailure;
+							console.warn(
+								`[VideoExporter] ${NATIVE_EXPORT_ENGINE_NAME} finalize failed; retrying full export with WebCodecs.`,
+								nativeFailure,
+							);
+						} else {
+							return {
+								success: false,
+								error: this.buildLightningExportError(nativeFailure),
+								metrics: this.buildExportMetrics(),
+							};
+						}
+					} else {
 						return {
-							success: false,
-							error:
-								finishResult.error || `${NATIVE_EXPORT_ENGINE_NAME} export failed`,
+							success: true,
+							tempFilePath: finishResult.tempFilePath,
+							blob: finishResult.blob,
 							metrics: this.buildExportMetrics(),
 						};
 					}
-
-					return {
-						success: true,
-						tempFilePath: finishResult.tempFilePath,
-						blob: finishResult.blob,
-						metrics: this.buildExportMetrics(),
-					};
 				}
 
-				stageStartedAt = this.getNowMs();
-				if (this.encoder && this.encoder.state === "configured") {
-					this.reportFinalizingProgress(totalFrames, 97);
-					await this.measureFinalizationStage("encoderFlushMs", async () => {
-						await this.awaitWithFinalizationTimeout(
-							this.encoder!.flush(),
-							"encoder flush",
-						);
-					});
-				}
-
-				this.reportFinalizingProgress(totalFrames, 98);
-				await this.measureFinalizationStage("queuedMuxingMs", async () => {
-					await this.awaitWithFinalizationTimeout(
-						this.pendingMuxing,
-						"muxing queued video chunks",
-					);
-				});
-
-				// Surface muxing errors before proceeding with finalization
-				if (this.encoderError) {
-					throw this.encoderError;
-				}
-
-				if (
-					nativeAudioPlan.audioMode !== "none" &&
-					!shouldUseFfmpegAudioFallback &&
-					!this.cancelled
-				) {
-					const demuxer = this.streamingDecoder.getDemuxer();
-					if (
-						demuxer ||
-						(this.config.audioRegions ?? []).length > 0 ||
-						(this.config.sourceAudioFallbackPaths ?? []).length > 0
-					) {
-						this.audioProcessor = new AudioProcessor();
-						this.audioProcessor.setOnProgress((progress) => {
-							this.reportFinalizingProgress(totalFrames, 99, progress);
-						});
-						this.reportFinalizingProgress(totalFrames, 99);
-						await this.measureFinalizationStage("audioProcessingMs", async () => {
+				// If Breeze failed and we're about to retry with WebCodecs, skip the
+				// WebCodecs finalize path for this incomplete attempt.
+				if (shouldRetryWithoutNative) {
+					// fall through to finally + loop continue
+				} else {
+					stageStartedAt = this.getNowMs();
+					if (this.encoder && this.encoder.state === "configured") {
+						this.reportFinalizingProgress(totalFrames, 97);
+						await this.measureFinalizationStage("encoderFlushMs", async () => {
 							await this.awaitWithFinalizationTimeout(
-								this.audioProcessor!.process(
-									demuxer,
-									this.muxer!,
-									this.config.videoUrl,
-									this.config.trimRegions,
-									this.config.speedRegions,
-									undefined,
-									this.config.audioRegions,
-									this.config.sourceAudioFallbackPaths,
-									this.config.sourceAudioFallbackStartDelayMsByPath,
-									this.config.sourceAudioTrackSettings,
-									this.config.clipRegions,
-								),
-								"audio processing",
-								"audio",
-								true,
+								this.encoder!.flush(),
+								"encoder flush",
 							);
 						});
 					}
-				}
 
-				this.reportFinalizingProgress(totalFrames, 99);
-				const muxerResult = await this.measureFinalizationStage(
-					"muxerFinalizeMs",
-					async () =>
-						this.awaitWithFinalizationTimeout(
-							this.muxer!.finalize(),
-							"muxer finalization",
-							nativeAudioPlan.audioMode !== "none" && !shouldUseFfmpegAudioFallback
-								? "audio"
-								: "default",
-						),
-				);
+					this.reportFinalizingProgress(totalFrames, 98);
+					await this.measureFinalizationStage("queuedMuxingMs", async () => {
+						await this.awaitWithFinalizationTimeout(
+							this.pendingMuxing,
+							"muxing queued video chunks",
+						);
+					});
 
-				if (shouldUseFfmpegAudioFallback) {
-					console.warn(
-						shouldUsePitchPreservingFfmpegAudio
-							? "[VideoExporter] Using FFmpeg audio muxing for pitch-preserving speed edits."
-							: "[VideoExporter] Browser AAC encoding is unavailable; falling back to FFmpeg audio muxing.",
+					// Surface muxing errors before proceeding with finalization
+					if (this.encoderError) {
+						throw this.encoderError;
+					}
+
+					if (
+						nativeAudioPlan.audioMode !== "none" &&
+						!shouldUseFfmpegAudioFallback &&
+						!this.cancelled
+					) {
+						const demuxer = this.streamingDecoder.getDemuxer();
+						if (
+							demuxer ||
+							(this.config.audioRegions ?? []).length > 0 ||
+							(this.config.sourceAudioFallbackPaths ?? []).length > 0
+						) {
+							this.audioProcessor = new AudioProcessor();
+							this.audioProcessor.setOnProgress((progress) => {
+								this.reportFinalizingProgress(totalFrames, 99, progress);
+							});
+							this.reportFinalizingProgress(totalFrames, 99);
+							await this.measureFinalizationStage("audioProcessingMs", async () => {
+								await this.awaitWithFinalizationTimeout(
+									this.audioProcessor!.process(
+										demuxer,
+										this.muxer!,
+										this.config.videoUrl,
+										this.config.trimRegions,
+										this.config.speedRegions,
+										undefined,
+										this.config.audioRegions,
+										this.config.sourceAudioFallbackPaths,
+										this.config.sourceAudioFallbackStartDelayMsByPath,
+										this.config.sourceAudioTrackSettings,
+										this.config.clipRegions,
+									),
+									"audio processing",
+									"audio",
+									true,
+								);
+							});
+						}
+					}
+
+					this.reportFinalizingProgress(totalFrames, 99);
+					const muxerResult = await this.measureFinalizationStage(
+						"muxerFinalizeMs",
+						async () =>
+							this.awaitWithFinalizationTimeout(
+								this.muxer!.finalize(),
+								"muxer finalization",
+								nativeAudioPlan.audioMode !== "none" &&
+									!shouldUseFfmpegAudioFallback
+									? "audio"
+									: "default",
+							),
 					);
-					const muxedResult = await this.finalizeExportWithFfmpegAudio(
-						muxerResult,
-						nativeAudioPlan,
-					);
-					this.finalizationTimeMs = this.getNowMs() - stageStartedAt;
-					if (!muxedResult.success || (!muxedResult.blob && !muxedResult.tempFilePath)) {
+
+					if (shouldUseFfmpegAudioFallback) {
+						console.warn(
+							shouldUsePitchPreservingFfmpegAudio
+								? "[VideoExporter] Using FFmpeg audio muxing for pitch-preserving speed edits."
+								: "[VideoExporter] Browser AAC encoding is unavailable; falling back to FFmpeg audio muxing.",
+						);
+						const muxedResult = await this.finalizeExportWithFfmpegAudio(
+							muxerResult,
+							nativeAudioPlan,
+						);
+						this.finalizationTimeMs = this.getNowMs() - stageStartedAt;
+						if (
+							!muxedResult.success ||
+							(!muxedResult.blob && !muxedResult.tempFilePath)
+						) {
+							return {
+								success: false,
+								error: muxedResult.error || "Failed to mux audio with FFmpeg",
+								metrics: this.buildExportMetrics(),
+							};
+						}
+
 						return {
-							success: false,
-							error: muxedResult.error || "Failed to mux audio with FFmpeg",
-							metrics: this.buildExportMetrics(),
+							success: true,
+							blob: muxedResult.blob,
+							tempFilePath: muxedResult.tempFilePath,
+							metrics: muxedResult.metrics ?? this.buildExportMetrics(),
 						};
 					}
 
+					this.finalizationTimeMs = this.getNowMs() - stageStartedAt;
+					if (muxerResult.mode === "stream") {
+						return {
+							success: true,
+							tempFilePath: muxerResult.tempFilePath,
+							metrics: this.buildExportMetrics(),
+						};
+					}
 					return {
 						success: true,
-						blob: muxedResult.blob,
-						tempFilePath: muxedResult.tempFilePath,
-						metrics: muxedResult.metrics ?? this.buildExportMetrics(),
+						blob: muxerResult.blob,
+						metrics: this.buildExportMetrics(),
 					};
-				}
+				} // end !shouldRetryWithoutNative
+			} catch (error) {
+				const resolvedError = this.encoderError ?? this.nativeEncoderError ?? error;
+				const resolvedMessage =
+					resolvedError instanceof Error ? resolvedError.message : String(resolvedError);
 
-				this.finalizationTimeMs = this.getNowMs() - stageStartedAt;
-				if (muxerResult.mode === "stream") {
+				if (this.cancelled && !this.encoderError && !this.nativeEncoderError) {
 					return {
-						success: true,
-						tempFilePath: muxerResult.tempFilePath,
+						success: false,
+						error: "Export cancelled",
 						metrics: this.buildExportMetrics(),
 					};
 				}
-				return {
-					success: true,
-					blob: muxerResult.blob,
-					metrics: this.buildExportMetrics(),
-				};
-			} catch (error) {
+
 				if (
+					!forceWebCodecsOnly &&
+					!retriedWithoutNative &&
+					this.shouldRetryNativeFailureWithWebCodecs(resolvedMessage)
+				) {
+					retriedWithoutNative = true;
+					forceWebCodecsOnly = true;
+					shouldRetryWithoutNative = true;
+					this.lastNativeExportError = resolvedMessage;
+					console.warn(
+						`[VideoExporter] ${NATIVE_EXPORT_ENGINE_NAME} failed mid-export; retrying full export with WebCodecs.`,
+						resolvedError,
+					);
+				} else if (
 					!preferReadableFileSource &&
 					!retriedWithReadableFileSource &&
 					this.shouldRetryWithReadableFileSource(error)
@@ -910,15 +979,6 @@ export class ModernVideoExporter {
 						error,
 					);
 				} else {
-					if (this.cancelled && !this.encoderError) {
-						return {
-							success: false,
-							error: "Export cancelled",
-							metrics: this.buildExportMetrics(),
-						};
-					}
-
-					const resolvedError = this.encoderError ?? error;
 					console.error("Export error:", error);
 					return {
 						success: false,
@@ -927,7 +987,11 @@ export class ModernVideoExporter {
 					};
 				}
 			} finally {
-				if (!shouldRetryWithReadableFileSource && this.totalExportStartTimeMs > 0) {
+				if (
+					!shouldRetryWithReadableFileSource &&
+					!shouldRetryWithoutNative &&
+					this.totalExportStartTimeMs > 0
+				) {
 					console.log(
 						`[VideoExporter] Final metrics ${JSON.stringify(this.buildExportMetrics())}`,
 					);
@@ -935,10 +999,30 @@ export class ModernVideoExporter {
 				this.cleanup();
 			}
 
-			if (shouldRetryWithReadableFileSource) {
+			if (shouldRetryWithReadableFileSource || shouldRetryWithoutNative) {
 				continue;
 			}
 		}
+	}
+
+	private shouldRetryNativeFailureWithWebCodecs(message: string): boolean {
+		if (this.cancelled) {
+			return false;
+		}
+
+		const normalized = message.toLowerCase();
+		if (/export cancelled|user cancelled|abort(ed)?/.test(normalized)) {
+			return false;
+		}
+
+		// Only auto-retry when the failed attempt was actually on the native path.
+		if (this.encodeBackend !== "ffmpeg" && !this.nativeExportSessionId) {
+			return false;
+		}
+
+		return /epipe|broken pipe|stream destroyed|not accepting frames|h\.?264|annex\s*b|invalid data|error while decoding|native export|breeze|ffmpeg closed|demux|bitstream|encoder is not accepting|pipe/i.test(
+			normalized,
+		);
 	}
 
 	private shouldRetryWithReadableFileSource(error: unknown): boolean {
@@ -1004,6 +1088,12 @@ export class ModernVideoExporter {
 		if (this.lastNativeExportError) {
 			guidance.add(
 				`Check that the packaged FFmpeg build includes a compatible ${NATIVE_EXPORT_ENGINE_NAME} encoder path for ${platform}, plus libx264 as a software fallback.`,
+			);
+		}
+
+		if (/epipe|broken pipe|ffmpeg closed the export stream/i.test(message)) {
+			guidance.add(
+				"Lightning tried the fast Breeze path and the encoder stream closed early. Recordly now retries with WebCodecs automatically; if this still fails, switch Export pipeline to Standard or lower the quality preset.",
 			);
 		}
 
@@ -1576,6 +1666,9 @@ export class ModernVideoExporter {
 		}
 		if ((this.config.annotationRegions ?? []).length > 0) {
 			reasons.push("unsupported-annotation-overlay");
+		}
+		if ((this.config.brollRegions ?? []).length > 0) {
+			reasons.push("unsupported-broll-overlay");
 		}
 		if ((this.config.autoCaptions ?? []).length > 0) {
 			reasons.push("unsupported-caption-overlay");
@@ -2618,28 +2711,62 @@ export class ModernVideoExporter {
 			return false;
 		}
 
-		const encoderConfig: VideoEncoderConfig = {
-			codec: "avc1.640034",
-			width: this.config.width,
-			height: this.config.height,
-			bitrate: this.config.bitrate,
-			framerate: this.config.frameRate,
-			hardwareAcceleration: "prefer-hardware",
-			avc: { format: "annexb" },
-		};
+		// Prefer compatible High@L4.x profiles for 1080p-class portrait exports.
+		// Level 5.2 (avc1.640034) is often overkill and has failed on VideoToolbox
+		// for some vertical sizes, producing a broken pipe into FFmpeg.
+		const annexBCandidates = getOrderedSupportedMp4EncoderCandidates({
+			codec: this.config.codec,
+			preferredEncoderPath: this.config.preferredEncoderPath,
+		});
+		const preferredAnnexBCodecs = [
+			"avc1.640028", // High@L4.0
+			"avc1.64001f", // High@L3.1
+			"avc1.4d4028", // Main@L4.0
+			"avc1.4d401f", // Main@L3.1
+			"avc1.42001f", // Baseline@L3.1
+			"avc1.640034", // High@L5.2 (last resort)
+		];
+		const codecCandidates = Array.from(
+			new Set([
+				...preferredAnnexBCodecs,
+				...annexBCandidates.map((candidate) => candidate.codec),
+			]),
+		);
+		const hardwareModes: HardwareAcceleration[] = ["prefer-hardware", "prefer-software"];
 
-		try {
-			const support = await VideoEncoder.isConfigSupported(encoderConfig);
-			if (!support.supported) {
-				this.lastNativeExportError = `H.264 Annex B encoding is not supported at ${this.config.width}x${this.config.height}.`;
-				return false;
+		let selectedConfig: VideoEncoderConfig | null = null;
+		for (const codec of codecCandidates) {
+			for (const hardwareAcceleration of hardwareModes) {
+				const candidate: VideoEncoderConfig = {
+					codec,
+					width: this.config.width,
+					height: this.config.height,
+					bitrate: this.config.bitrate,
+					framerate: this.config.frameRate,
+					hardwareAcceleration,
+					avc: { format: "annexb" },
+					bitrateMode: "variable",
+					latencyMode: "realtime",
+				};
+				try {
+					const support = await VideoEncoder.isConfigSupported(candidate);
+					if (support.supported) {
+						selectedConfig = support.config
+							? { ...candidate, ...support.config, avc: { format: "annexb" } }
+							: candidate;
+						break;
+					}
+				} catch {
+					// try next candidate
+				}
 			}
-		} catch (error) {
-			this.lastNativeExportError = error instanceof Error ? error.message : String(error);
-			console.warn(
-				`[VideoExporter] ${NATIVE_EXPORT_ENGINE_NAME} encoder support check failed`,
-				error,
-			);
+			if (selectedConfig) {
+				break;
+			}
+		}
+
+		if (!selectedConfig) {
+			this.lastNativeExportError = `H.264 Annex B encoding is not supported at ${this.config.width}x${this.config.height}.`;
 			return false;
 		}
 
@@ -2666,7 +2793,7 @@ export class ModernVideoExporter {
 		this.nativeExportSessionId = result.sessionId;
 		this.lastNativeExportError = null;
 		this.encodeBackend = "ffmpeg";
-		this.encoderName = "h264-stream-copy";
+		this.encoderName = `h264-stream-copy/${selectedConfig.codec}/${selectedConfig.hardwareAcceleration ?? "default"}`;
 		this.pendingNativeWriteChunks = [];
 		this.pendingNativeWriteBytes = 0;
 
@@ -2679,7 +2806,11 @@ export class ModernVideoExporter {
 
 				const buffer = new ArrayBuffer(chunk.byteLength);
 				chunk.copyTo(buffer);
-				this.queueNativeWriteChunk(sessionId, new Uint8Array(buffer));
+				const raw = new Uint8Array(buffer);
+				// FFmpeg raw H.264 demuxer requires Annex B start codes. Some
+				// platforms ignore avc.format:"annexb" and emit AVCC — convert.
+				const ensured = ensureAnnexBChunk(raw);
+				this.queueNativeWriteChunk(sessionId, ensured.data);
 			},
 			error: (error) => {
 				this.nativeEncoderError = error;
@@ -2688,7 +2819,7 @@ export class ModernVideoExporter {
 		});
 
 		try {
-			encoder.configure(encoderConfig);
+			encoder.configure(selectedConfig);
 		} catch (error) {
 			this.lastNativeExportError = error instanceof Error ? error.message : String(error);
 			try {
@@ -2712,6 +2843,9 @@ export class ModernVideoExporter {
 
 		console.log(`[VideoExporter] ${NATIVE_EXPORT_ENGINE_NAME} session ready (H264-stream)`, {
 			sessionId: result.sessionId,
+			codec: selectedConfig.codec,
+			hardwareAcceleration: selectedConfig.hardwareAcceleration,
+			size: `${this.config.width}x${this.config.height}`,
 		});
 		return true;
 	}
@@ -2743,7 +2877,12 @@ export class ModernVideoExporter {
 			timestamp,
 			duration: frameDuration,
 		});
-		this.nativeH264Encoder.encode(frame, { keyFrame: frameIndex % 300 === 0 });
+		// Key every ~2s (and always frame 0) so FFmpeg can recover if a mid-stream
+		// packet is lost and so the pipe starts with SPS/PPS-bearing IDR frames.
+		const keyFrameEvery = Math.max(1, Math.round(this.config.frameRate * 2));
+		this.nativeH264Encoder.encode(frame, {
+			keyFrame: frameIndex === 0 || frameIndex % keyFrameEvery === 0,
+		});
 		frame.close();
 	}
 

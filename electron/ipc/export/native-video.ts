@@ -1451,12 +1451,36 @@ export function getNativeVideoExportSessionError(
 	session: NativeVideoExportSession,
 	fallback: string,
 ) {
-	return (
-		session.stdinError?.message ||
-		session.processError?.message ||
-		session.stderrOutput.trim() ||
-		fallback
-	);
+	const stderr = session.stderrOutput.trim();
+	const processMessage = session.processError?.message?.trim() || "";
+	const stdinMessage = session.stdinError?.message?.trim() || "";
+	const stdinIsBrokenPipe = isIgnorableNativeVideoExportStreamError(session.stdinError);
+
+	// Prefer FFmpeg's real stderr over Node's follow-on "write EPIPE". When FFmpeg
+	// dies on bad H.264 input, stdin reports EPIPE first and used to hide the cause.
+	if (stderr) {
+		if (stdinMessage && !stdinIsBrokenPipe && !stderr.includes(stdinMessage)) {
+			return `${stderr} (${stdinMessage})`;
+		}
+		return stderr;
+	}
+
+	if (processMessage) {
+		return processMessage;
+	}
+
+	if (stdinMessage && !stdinIsBrokenPipe) {
+		return stdinMessage;
+	}
+
+	if (stdinIsBrokenPipe) {
+		return (
+			fallback ||
+			"FFmpeg closed the export stream early (broken pipe). The H.264 bitstream may be invalid or incomplete."
+		);
+	}
+
+	return fallback;
 }
 
 export function sendNativeVideoExportWriteFrameResult(
@@ -1610,7 +1634,17 @@ export async function writeNativeVideoExportFrame(
 		session.ffmpegProcess.stdin.write(frameBuffer);
 	} catch (error) {
 		session.stdinError = error instanceof Error ? error : new Error(String(error));
-		throw session.stdinError;
+		// Give FFmpeg a moment to flush stderr after dying so the surfaced error
+		// includes the real demux/encode failure instead of only "write EPIPE".
+		if (isIgnorableNativeVideoExportStreamError(session.stdinError)) {
+			await new Promise((resolve) => setTimeout(resolve, 50));
+		}
+		throw new Error(
+			getNativeVideoExportSessionError(
+				session,
+				session.stdinError.message || "Native video export write failed",
+			),
+		);
 	}
 
 	if (session.ffmpegProcess.stdin.writableLength >= session.maxQueuedWriteBytes) {
