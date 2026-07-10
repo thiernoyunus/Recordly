@@ -23,6 +23,11 @@ export default function TimelineResizeHandle({
 	const [isDragging, setIsDragging] = useState(false);
 	const dragStartYRef = useRef(0);
 	const dragStartHeightRef = useRef(heightPx);
+	const latestHeightRef = useRef(heightPx);
+
+	useEffect(() => {
+		latestHeightRef.current = heightPx;
+	}, [heightPx]);
 
 	const onPointerDown = useCallback(
 		(event: React.PointerEvent<HTMLDivElement>) => {
@@ -36,6 +41,7 @@ export default function TimelineResizeHandle({
 		[heightPx],
 	);
 
+	// Keep drag listeners stable — do NOT depend on heightPx (rebinds every pixel).
 	useEffect(() => {
 		if (!isDragging) return;
 
@@ -48,7 +54,6 @@ export default function TimelineResizeHandle({
 
 		const onPointerUp = () => {
 			setIsDragging(false);
-			saveTimelinePanelHeight(heightPx);
 		};
 
 		window.addEventListener("pointermove", onPointerMove);
@@ -64,12 +69,12 @@ export default function TimelineResizeHandle({
 			document.body.style.cursor = "";
 			document.body.style.userSelect = "";
 		};
-	}, [heightPx, isDragging, onHeightChange]);
+	}, [isDragging, onHeightChange]);
 
-	// Persist final height when drag ends (heightPx may lag one frame behind).
+	// Persist height when drag ends (and on keyboard nudges via heightPx updates while idle).
 	useEffect(() => {
 		if (isDragging) return;
-		saveTimelinePanelHeight(heightPx);
+		saveTimelinePanelHeight(latestHeightRef.current);
 	}, [isDragging, heightPx]);
 
 	return (

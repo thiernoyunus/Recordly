@@ -22,7 +22,7 @@ export default function TimelineAxis({ videoDurationMs, currentTimeMs }: Timelin
 
 	const markers = useMemo(() => {
 		if (intervalMs <= 0) {
-			return { markers: [], minorTicks: [] as number[] };
+			return { markers: [], minorTicks: [] as number[], intervalMs: 1000 };
 		}
 
 		// When zoomed out past the media (CapCut-style empty track), still tick
@@ -57,6 +57,7 @@ export default function TimelineAxis({ videoDurationMs, currentTimeMs }: Timelin
 		return {
 			markers: sorted.map((time) => ({ time, label: formatTimeLabel(time, intervalMs) })),
 			minorTicks,
+			intervalMs,
 		};
 	}, [intervalMs, range.end, range.start, videoDurationMs]);
 
@@ -83,7 +84,9 @@ export default function TimelineAxis({ videoDurationMs, currentTimeMs }: Timelin
 
 			{markers.markers.map((marker) => {
 				const offset = valueToPixels(marker.time - range.start);
-				const isNearPlayhead = Math.abs(marker.time - currentTimeMs) < Math.max(1, intervalMs / 8);
+				const isNearPlayhead =
+					Math.abs(marker.time - currentTimeMs) <
+					Math.max(1, (markers.intervalMs || 1000) / 8);
 				const markerStyle: CSSProperties = {
 					position: "absolute",
 					bottom: 0,

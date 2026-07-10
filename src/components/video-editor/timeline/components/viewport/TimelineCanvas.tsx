@@ -39,6 +39,7 @@ import { useTimelineAudioPeaks } from "../../hooks/useTimelineAudioPeaks";
 import Item from "../../Item";
 import glassStyles from "../../ItemGlass.module.css";
 import Row from "../../Row";
+import { TRACK_RAIL_WIDTH_PX } from "../../timelineChrome";
 import {
 	getTimelineContentMinHeightPx,
 	getTimelineRowsMinHeightPx,
@@ -900,8 +901,16 @@ export default function TimelineCanvas({
 	isDragging = false,
 	isLoading = false,
 }: TimelineCanvasProps) {
-	const { setTimelineRef, style, sidebarWidth, direction, range, valueToPixels, pixelsToValue } =
-		useTimelineContext();
+	const {
+		setTimelineRef,
+		setSidebarRef,
+		style,
+		sidebarWidth,
+		direction,
+		range,
+		valueToPixels,
+		pixelsToValue,
+	} = useTimelineContext();
 	const localTimelineRef = useRef<HTMLDivElement | null>(null);
 	const [isSeeking, setIsSeeking] = useState(false);
 	const seekRafRef = useRef<number | null>(null);
@@ -1145,6 +1154,18 @@ export default function TimelineCanvas({
 			onMouseMove={handleTimelineMouseMove}
 			onMouseLeave={handleTimelineMouseLeave}
 		>
+			{/* Stable sidebar measure for dnd-timeline (axis/playhead/seek use sidebarWidth).
+			    Rows only draw matching rails — they do not all call setSidebarRef. */}
+			<div
+				ref={setSidebarRef}
+				aria-hidden
+				className="pointer-events-none absolute top-0 opacity-0"
+				style={{
+					width: TRACK_RAIL_WIDTH_PX,
+					minWidth: TRACK_RAIL_WIDTH_PX,
+					height: 1,
+				}}
+			/>
 			<TimelineAxis videoDurationMs={videoDurationMs} currentTimeMs={currentTimeMs} />
 			<PlaybackCursor
 				currentTimeMs={currentTimeMs}
@@ -1182,7 +1203,12 @@ export default function TimelineCanvas({
 							"repeating-linear-gradient(90deg, transparent, transparent 11px, rgba(255,255,255,0.015) 11px, rgba(255,255,255,0.015) 12px)",
 					}}
 				>
-					<div className="absolute inset-y-0 left-0 w-px bg-foreground/20" />
+					<div
+						className={cn(
+							"absolute inset-y-0 w-px bg-foreground/20",
+							sideProperty === "right" ? "right-0" : "left-0",
+						)}
+					/>
 				</div>
 			)}
 

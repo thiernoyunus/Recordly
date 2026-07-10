@@ -1,6 +1,7 @@
 import type { RowDefinition } from "dnd-timeline";
 import { useRow } from "dnd-timeline";
 import { cn } from "@/lib/utils";
+import { TRACK_RAIL_WIDTH_PX } from "./timelineChrome";
 
 interface RowProps extends RowDefinition {
 	children: React.ReactNode;
@@ -10,14 +11,17 @@ interface RowProps extends RowDefinition {
 	labelColor?: string;
 	/** Short track name for CapCut-style left rail (e.g. "Zoom", "Clip") */
 	trackLabel?: string;
+	/**
+	 * When true, this row's rail is the single element dnd-timeline measures for
+	 * `sidebarWidth` (axis/playhead/seek math). Only one row should set this.
+	 */
+	measureSidebar?: boolean;
 	onMouseEnter?: React.MouseEventHandler<HTMLDivElement>;
 	onMouseMove?: React.MouseEventHandler<HTMLDivElement>;
 	onMouseLeave?: React.MouseEventHandler<HTMLDivElement>;
 	onMouseDown?: React.MouseEventHandler<HTMLDivElement>;
 	onClick?: React.MouseEventHandler<HTMLDivElement>;
 }
-
-const TRACK_RAIL_WIDTH_PX = 52;
 
 export default function Row({
 	id,
@@ -27,6 +31,7 @@ export default function Row({
 	isEmpty,
 	labelColor = "rgba(255,255,255,0.45)",
 	trackLabel,
+	measureSidebar = false,
 	onMouseEnter,
 	onMouseMove,
 	onMouseLeave,
@@ -48,9 +53,9 @@ export default function Row({
 				marginBottom: 1,
 			}}
 		>
-			{/* CapCut-style track rail — measured by dnd-timeline as sidebarWidth */}
+			{/* CapCut-style track rail — width must match TRACK_RAIL_WIDTH_PX / sidebarWidth */}
 			<div
-				ref={setSidebarRef}
+				ref={measureSidebar ? setSidebarRef : undefined}
 				className={cn(
 					"relative z-[3] flex flex-shrink-0 items-center justify-center",
 					"border-r border-foreground/[0.06] bg-editor-header/80",

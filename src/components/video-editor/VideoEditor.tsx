@@ -568,9 +568,13 @@ export default function VideoEditor() {
 	const [speedRegions, setSpeedRegions] = useState<SpeedRegion[]>([]);
 	const [annotationRegions, setAnnotationRegions] = useState<AnnotationRegion[]>([]);
 	const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
+	// Default first, then load persisted height after mount (avoids hydration mismatch).
 	const [timelinePanelHeight, setTimelinePanelHeight] = useState(
-		() => loadTimelinePanelHeight() || DEFAULT_TIMELINE_PANEL_HEIGHT_PX,
+		DEFAULT_TIMELINE_PANEL_HEIGHT_PX,
 	);
+	useEffect(() => {
+		setTimelinePanelHeight(loadTimelinePanelHeight() || DEFAULT_TIMELINE_PANEL_HEIGHT_PX);
+	}, []);
 	const [audioRegions, setAudioRegions] = useState<AudioRegion[]>([]);
 	const [selectedAudioId, setSelectedAudioId] = useState<string | null>(null);
 	const [brollRegions, setBrollRegions] = useState<BRollRegion[]>([]);
