@@ -8,6 +8,9 @@ interface TimelineAxisProps {
 	currentTimeMs: number;
 }
 
+/**
+ * CapCut / Screen Studio inspired time ruler — dense minor ticks, calm major labels.
+ */
 export default function TimelineAxis({ videoDurationMs, currentTimeMs }: TimelineAxisProps) {
 	const { sidebarWidth, direction, range, valueToPixels } = useTimelineContext();
 	const sideProperty = direction === "rtl" ? "right" : "left";
@@ -19,12 +22,15 @@ export default function TimelineAxis({ videoDurationMs, currentTimeMs }: Timelin
 
 	const markers = useMemo(() => {
 		if (intervalMs <= 0) {
-			return { markers: [], minorTicks: [] as number[] };
+			return { markers: [], minorTicks: [] as number[], intervalMs: 1000 };
 		}
 
-		const maxTime = videoDurationMs > 0 ? videoDurationMs : range.end;
-		const visibleStart = Math.max(0, Math.min(range.start, maxTime));
-		const visibleEnd = Math.min(range.end, maxTime);
+		// When zoomed out past the media (CapCut-style empty track), still tick
+		// the full visible range — not only up to the clip end.
+		const mediaEnd = videoDurationMs > 0 ? videoDurationMs : range.end;
+		const axisEnd = Math.max(range.end, mediaEnd);
+		const visibleStart = Math.max(0, Math.min(range.start, axisEnd));
+		const visibleEnd = Math.min(range.end, axisEnd);
 		const markerTimes = new Set<number>();
 		const firstMarker = Math.ceil(visibleStart / intervalMs) * intervalMs;
 
@@ -32,11 +38,13 @@ export default function TimelineAxis({ videoDurationMs, currentTimeMs }: Timelin
 			markerTimes.add(Math.round(time));
 		}
 
-		if (visibleStart <= maxTime) markerTimes.add(Math.round(visibleStart));
-		if (videoDurationMs > 0) markerTimes.add(Math.round(videoDurationMs));
+		if (visibleStart <= axisEnd) markerTimes.add(Math.round(visibleStart));
+		if (mediaEnd > 0 && mediaEnd >= range.start && mediaEnd <= range.end) {
+			markerTimes.add(Math.round(mediaEnd));
+		}
 
 		const sorted = Array.from(markerTimes)
-			.filter((time) => time <= maxTime)
+			.filter((time) => time <= axisEnd)
 			.sort((a, b) => a - b);
 
 		const minorTicks: number[] = [];
@@ -49,20 +57,26 @@ export default function TimelineAxis({ videoDurationMs, currentTimeMs }: Timelin
 		return {
 			markers: sorted.map((time) => ({ time, label: formatTimeLabel(time, intervalMs) })),
 			minorTicks,
+			intervalMs,
 		};
 	}, [intervalMs, range.end, range.start, videoDurationMs]);
 
 	return (
 		<div
-			className="h-8 bg-editor-bg border-b border-foreground/10 relative overflow-hidden select-none"
-			style={{ [sideProperty === "right" ? "marginRight" : "marginLeft"]: `${sidebarWidth}px` }}
+			className="relative h-8 flex-shrink-0 select-none overflow-hidden border-b border-foreground/[0.07] bg-editor-header"
+			style={{
+				[sideProperty === "right" ? "marginRight" : "marginLeft"]: `${sidebarWidth}px`,
+			}}
 		>
+			{/* Baseline rule */}
+			<div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-foreground/[0.08]" />
+
 			{markers.minorTicks.map((time) => {
 				const offset = valueToPixels(time - range.start);
 				return (
 					<div
 						key={`minor-${time}`}
-						className="absolute bottom-1 h-1 w-[1px] bg-foreground/5"
+						className="absolute bottom-0 h-2 w-px bg-foreground/[0.12]"
 						style={{ [sideProperty]: `${offset}px` }}
 					/>
 				);
@@ -70,6 +84,9 @@ export default function TimelineAxis({ videoDurationMs, currentTimeMs }: Timelin
 
 			{markers.markers.map((marker) => {
 				const offset = valueToPixels(marker.time - range.start);
+				const isNearPlayhead =
+					Math.abs(marker.time - currentTimeMs) <
+					Math.max(1, (markers.intervalMs || 1000) / 8);
 				const markerStyle: CSSProperties = {
 					position: "absolute",
 					bottom: 0,
@@ -83,18 +100,21 @@ export default function TimelineAxis({ videoDurationMs, currentTimeMs }: Timelin
 
 				return (
 					<div key={marker.time} style={markerStyle}>
-						<div className="flex flex-col items-center pb-1">
-							<div className="mb-1.5 h-[5px] w-[5px] rounded-full bg-foreground/30" />
+						<div className="flex flex-col items-center pb-0.5">
 							<span
 								className={cn(
-									"text-[10px] font-medium tabular-nums tracking-tight",
-									Math.abs(marker.time - currentTimeMs) < 1
-										? "text-[#2563EB]"
-										: "text-foreground/40",
+									"mb-1 text-[10px] font-medium tabular-nums tracking-tight",
+									isNearPlayhead ? "text-[#2563EB]" : "text-foreground/40",
 								)}
 							>
 								{marker.label}
 							</span>
+							<div
+								className={cn(
+									"h-2.5 w-px",
+									isNearPlayhead ? "bg-[#2563EB]/80" : "bg-foreground/25",
+								)}
+							/>
 						</div>
 					</div>
 				);

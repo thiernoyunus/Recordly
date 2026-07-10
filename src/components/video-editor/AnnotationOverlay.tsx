@@ -207,6 +207,10 @@ export function AnnotationOverlay({
 			scale={interactionScale}
 			onDragStart={() => {
 				isDraggingRef.current = true;
+				// CapCut-style: first grab also selects so handles appear.
+				if (!isSelected) {
+					onClick(annotation.id);
+				}
 			}}
 			onDragStop={(_e, d) => {
 				const next = screenRectToRecordingPercent({ x: d.x, y: d.y, width, height });
@@ -233,18 +237,22 @@ export function AnnotationOverlay({
 			}}
 			bounds="parent"
 			className={cn(
-				"cursor-move transition-all",
-				isSelected && "ring-2 ring-[#2563EB] ring-offset-2 ring-offset-transparent",
+				"cursor-move transition-[box-shadow,background-color] duration-150",
+				isSelected && "ring-2 ring-[#2563EB]/90 ring-offset-1 ring-offset-transparent",
 			)}
 			style={{
-				zIndex: isSelectedBoost ? zIndex + 1000 : zIndex, // Boost selected annotation to ensure it's on top
+				zIndex: isSelectedBoost ? zIndex + 1000 : zIndex,
 				pointerEvents: "auto",
-				border: isSelected ? "2px solid rgba(37, 99, 235, 0.8)" : "none",
-				backgroundColor: isSelected ? "rgba(37, 99, 235, 0.1)" : "transparent",
-				boxShadow: isSelected ? "0 0 0 1px rgba(37, 99, 235, 0.35)" : "none",
+				border: isSelected ? "1.5px solid rgba(37, 99, 235, 0.95)" : "1px solid transparent",
+				backgroundColor: isSelected ? "rgba(37, 99, 235, 0.08)" : "transparent",
+				boxShadow: isSelected
+					? "0 0 0 1px rgba(37, 99, 235, 0.35), 0 8px 24px rgba(0,0,0,0.28)"
+					: "none",
+				borderRadius: 8,
 			}}
 			enableResizing={isSelected}
-			disableDragging={!isSelected}
+			// Allow a light drag even before selection so click-to-select feels less sticky.
+			disableDragging={false}
 			resizeHandleStyles={{
 				topLeft: {
 					width: "12px",

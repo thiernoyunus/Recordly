@@ -134,7 +134,7 @@ export default function Item({
 					animation="shimmer-premium"
 					label={loadingLabel || "Loading..."}
 					className="w-full"
-					style={{ height: "85%", minHeight: 22 }}
+					style={{ height: "88%", minHeight: 26 }}
 				/>
 			</div>
 		);
@@ -208,8 +208,8 @@ export default function Item({
 						isSelected && glassStyles.selected,
 					)}
 					style={{
-						height: "85%",
-						minHeight: 22,
+						height: "88%",
+						minHeight: 26,
 						minWidth: MIN_ITEM_PX,
 					}}
 					onClick={(event) => {

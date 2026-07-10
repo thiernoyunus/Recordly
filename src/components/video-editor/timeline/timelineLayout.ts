@@ -1,5 +1,6 @@
 export const TIMELINE_AXIS_HEIGHT_PX = 32;
-export const TIMELINE_ROW_MIN_HEIGHT_PX = 28;
+/** CapCut-style denser but still finger-friendly track height */
+export const TIMELINE_ROW_MIN_HEIGHT_PX = 34;
 export const TIMELINE_VISIBLE_ROW_COUNT = 2;
 
 function normalizeRowCount(rowCount: number) {

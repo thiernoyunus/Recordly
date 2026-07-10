@@ -39,6 +39,7 @@ import { useTimelineAudioPeaks } from "../../hooks/useTimelineAudioPeaks";
 import Item from "../../Item";
 import glassStyles from "../../ItemGlass.module.css";
 import Row from "../../Row";
+import { TRACK_RAIL_WIDTH_PX } from "../../timelineChrome";
 import {
 	getTimelineContentMinHeightPx,
 	getTimelineRowsMinHeightPx,
@@ -586,7 +587,13 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 
 	return (
 		<>
-			<Row id={CLIP_ROW_ID} isEmpty={clipItems.length === 0} hint={HINT_CLIP}>
+			<Row
+				id={CLIP_ROW_ID}
+				trackLabel="Clip"
+				labelColor="#60a5fa"
+				isEmpty={clipItems.length === 0}
+				hint={HINT_CLIP}
+			>
 				<ClipMarkerOverlay videoDurationMs={videoDurationMs} />
 				{clipItems.map((item) => (
 					<Item
@@ -605,7 +612,12 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 			</Row>
 			{showSourceAudioTrack &&
 				sourceAudioTracks.map((track) => (
-					<Row key={track.id} id={`${SOURCE_AUDIO_ROW_ID}-${track.id}`}>
+					<Row
+						key={track.id}
+						id={`${SOURCE_AUDIO_ROW_ID}-${track.id}`}
+						trackLabel={track.label?.slice(0, 6) || "Audio"}
+						labelColor="#4ade80"
+					>
 						{clipItems
 							.filter((item) => item.showSourceAudio)
 							.map((item) => {
@@ -637,6 +649,8 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 
 			<Row
 				id={ZOOM_ROW_ID}
+				trackLabel="Zoom"
+				labelColor="#c084fc"
 				isEmpty={zoomItems.length === 0}
 				onMouseEnter={onZoomRowMouseEnter}
 				onMouseMove={onZoomRowMouseMove}
@@ -695,7 +709,12 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 			</Row>
 
 			{(showLayoutTrack || layoutItems.length > 0) && (
-				<Row id={LAYOUT_ROW_ID} isEmpty={layoutItems.length === 0}>
+				<Row
+					id={LAYOUT_ROW_ID}
+					trackLabel="Layout"
+					labelColor="#2dd4bf"
+					isEmpty={layoutItems.length === 0}
+				>
 					{layoutItems.map((item) => (
 						<Item
 							id={item.id}
@@ -715,6 +734,8 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 			{(captionsEnabled || captionItems.length > 0) && (
 				<Row
 					id={CAPTION_ROW_ID}
+					trackLabel="Caps"
+					labelColor="#f472b6"
 					isEmpty={captionItems.length === 0}
 					onMouseEnter={onCaptionRowMouseEnter}
 					onMouseMove={onCaptionRowMouseMove}
@@ -771,6 +792,8 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 				<Row
 					key={rowId}
 					id={rowId}
+					trackLabel={index === 0 ? "Note" : `N${index + 1}`}
+					labelColor="#facc15"
 					isEmpty={rowItems.length === 0}
 					hint={index === 0 ? HINT_ANNOTATION : undefined}
 				>
@@ -794,6 +817,8 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 				<Row
 					key={rowId}
 					id={rowId}
+					trackLabel={index === 0 ? "Music" : `A${index + 1}`}
+					labelColor="#4ade80"
 					isEmpty={rowItems.length === 0}
 					hint={index === 0 ? HINT_AUDIO : undefined}
 				>
@@ -814,6 +839,8 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 				<Row
 					key={rowId}
 					id={rowId}
+					trackLabel={index === 0 ? "B-roll" : `B${index + 1}`}
+					labelColor="#fb923c"
 					isEmpty={rowItems.length === 0}
 					hint={index === 0 ? HINT_BROLL : undefined}
 				>
@@ -874,8 +901,16 @@ export default function TimelineCanvas({
 	isDragging = false,
 	isLoading = false,
 }: TimelineCanvasProps) {
-	const { setTimelineRef, style, sidebarWidth, direction, range, valueToPixels, pixelsToValue } =
-		useTimelineContext();
+	const {
+		setTimelineRef,
+		setSidebarRef,
+		style,
+		sidebarWidth,
+		direction,
+		range,
+		valueToPixels,
+		pixelsToValue,
+	} = useTimelineContext();
 	const localTimelineRef = useRef<HTMLDivElement | null>(null);
 	const [isSeeking, setIsSeeking] = useState(false);
 	const seekRafRef = useRef<number | null>(null);
@@ -1112,13 +1147,25 @@ export default function TimelineCanvas({
 				...style,
 				height: `max(100%, ${timelineContentMinHeightPx}px, calc(${TIMELINE_AXIS_HEIGHT_PX}px + (100% - ${TIMELINE_AXIS_HEIGHT_PX}px) * ${timelineViewportStretchFactor}))`,
 			}}
-			className="select-none bg-editor-bg relative cursor-pointer group flex flex-col"
+			className="group relative flex cursor-pointer select-none flex-col bg-editor-timeline"
 			onMouseDown={handleTimelineMouseDown}
 			onClick={handleTimelineClick}
 			onMouseEnter={handleTimelineMouseEnter}
 			onMouseMove={handleTimelineMouseMove}
 			onMouseLeave={handleTimelineMouseLeave}
 		>
+			{/* Stable sidebar measure for dnd-timeline (axis/playhead/seek use sidebarWidth).
+			    Rows only draw matching rails — they do not all call setSidebarRef. */}
+			<div
+				ref={setSidebarRef}
+				aria-hidden
+				className="pointer-events-none absolute top-0 opacity-0"
+				style={{
+					width: TRACK_RAIL_WIDTH_PX,
+					minWidth: TRACK_RAIL_WIDTH_PX,
+					height: 1,
+				}}
+			/>
 			<TimelineAxis videoDurationMs={videoDurationMs} currentTimeMs={currentTimeMs} />
 			<PlaybackCursor
 				currentTimeMs={currentTimeMs}
@@ -1130,15 +1177,37 @@ export default function TimelineCanvas({
 			/>
 			{canShowGhostPlayhead && (
 				<div
-					className="absolute top-0 bottom-0 z-[45] pointer-events-none"
+					className="pointer-events-none absolute top-0 bottom-0 z-[45]"
 					style={{
 						[sideProperty === "right" ? "marginRight" : "marginLeft"]:
-							`${sidebarWidth - 1}px`,
+							`${sidebarWidth}px`,
 					}}
 				>
 					<div
-						className="absolute top-0 bottom-0 w-px bg-foreground/35"
+						className="absolute top-0 bottom-0 w-px bg-foreground/25"
 						style={{ [sideProperty]: `${timelineGhostOffsetPx}px` }}
+					/>
+				</div>
+			)}
+
+			{/* CapCut-style empty track past the media end — makes clip length obvious */}
+			{videoDurationMs > 0 && range.end > videoDurationMs && (
+				<div
+					className="pointer-events-none absolute bottom-0 top-8 z-[1]"
+					style={{
+						[sideProperty === "right" ? "marginRight" : "marginLeft"]:
+							`${sidebarWidth}px`,
+						[sideProperty]: `${valueToPixels(Math.max(0, videoDurationMs - range.start))}px`,
+						width: `${valueToPixels(range.end - Math.max(videoDurationMs, range.start))}px`,
+						background:
+							"repeating-linear-gradient(90deg, transparent, transparent 11px, rgba(255,255,255,0.015) 11px, rgba(255,255,255,0.015) 12px)",
+					}}
+				>
+					<div
+						className={cn(
+							"absolute inset-y-0 w-px bg-foreground/20",
+							sideProperty === "right" ? "right-0" : "left-0",
+						)}
 					/>
 				</div>
 			)}

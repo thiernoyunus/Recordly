@@ -48,12 +48,49 @@ describe("timeline dnd engine", () => {
 	});
 
 	it("clamps visible range for bounded and unbounded timelines", () => {
+		// Zoomed past the end without overscroll budget: pin to media end.
 		expect(
 			clampRange({ start: 4900, end: 5200 }, { totalMs: 5000, minVisibleRangeMs: 300 }),
 		).toEqual({ start: 4700, end: 5000 });
 		expect(clampRange({ start: -20, end: 50 }, { totalMs: 0, minVisibleRangeMs: 300 })).toEqual(
 			{ start: 0, end: 300 },
 		);
+	});
+
+	it("allows CapCut-style zoom-out past the media end", () => {
+		// Zooming out near the end used to lose expansion because end was clamped
+		// to totalMs before measuring span. With maxVisibleRangeMs the strip can
+		// shrink and leave empty track after the clip.
+		expect(
+			clampRange(
+				{ start: 4000, end: 9000 },
+				{ totalMs: 5000, minVisibleRangeMs: 300, maxVisibleRangeMs: 15000 },
+			),
+		).toEqual({ start: 0, end: 5000 });
+
+		expect(
+			clampRange(
+				{ start: -2000, end: 10000 },
+				{ totalMs: 5000, minVisibleRangeMs: 300, maxVisibleRangeMs: 15000 },
+			),
+		).toEqual({ start: 0, end: 12000 });
+
+		// Fully zoomed out past media: content pinned left, empty space on right.
+		expect(
+			clampRange(
+				{ start: 0, end: 15000 },
+				{ totalMs: 5000, minVisibleRangeMs: 300, maxVisibleRangeMs: 15000 },
+			),
+		).toEqual({ start: 0, end: 15000 });
+	});
+
+	it("still lets you zoom in tightly and pan across the media", () => {
+		expect(
+			clampRange(
+				{ start: 2000, end: 2300 },
+				{ totalMs: 5000, minVisibleRangeMs: 300, maxVisibleRangeMs: 15000 },
+			),
+		).toEqual({ start: 2000, end: 2300 });
 	});
 
 	it("resolves siblings by row and active item", () => {
