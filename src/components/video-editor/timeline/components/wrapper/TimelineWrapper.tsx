@@ -21,6 +21,8 @@ interface TimelineWrapperProps {
 	onRangeChange: Dispatch<SetStateAction<Range>>;
 	minItemDurationMs: number;
 	minVisibleRangeMs: number;
+	/** CapCut-style max zoom-out window (may exceed video length). */
+	maxVisibleRangeMs?: number;
 	gridSizeMs?: number;
 	onItemSpanChange: (id: string, span: Span, rowId?: string) => void;
 	resolveTargetRowId?: (id: string, proposedRowId: string) => string;
@@ -37,6 +39,7 @@ export default function TimelineWrapper({
 	onRangeChange,
 	minItemDurationMs,
 	minVisibleRangeMs,
+	maxVisibleRangeMs,
 	gridSizeMs: _gridSizeMs,
 	onItemSpanChange,
 	resolveTargetRowId,
@@ -233,18 +236,22 @@ export default function TimelineWrapper({
 	const handleRangeChange = useCallback(
 		(updater: (previous: Range) => Range) => {
 			onRangeChange((prev) => {
-				const normalized =
-					totalMs > 0 ? clampRange(prev, { totalMs, minVisibleRangeMs }) : prev;
+				const clampConfig = {
+					totalMs,
+					minVisibleRangeMs,
+					maxVisibleRangeMs,
+				};
+				const normalized = totalMs > 0 ? clampRange(prev, clampConfig) : prev;
 				const desired = updater(normalized);
 
 				if (totalMs > 0) {
-					return clampRange(desired, { totalMs, minVisibleRangeMs });
+					return clampRange(desired, clampConfig);
 				}
 
 				return desired;
 			});
 		},
-		[minVisibleRangeMs, onRangeChange, totalMs],
+		[maxVisibleRangeMs, minVisibleRangeMs, onRangeChange, totalMs],
 	);
 
 	return (

@@ -177,6 +177,12 @@ import {
 	RECORDLY_ISSUES_URL,
 } from "./TutorialHelp";
 import TimelineEditor, { type TimelineEditorHandle } from "./timeline/TimelineEditor";
+import TimelineResizeHandle from "./timeline/TimelineResizeHandle";
+import {
+	DEFAULT_TIMELINE_PANEL_HEIGHT_PX,
+	loadTimelinePanelHeight,
+	MIN_TIMELINE_PANEL_HEIGHT_PX,
+} from "./timeline/timelinePanelPrefs";
 import {
 	normalizeCursorTelemetry,
 	shouldAutoApplyFreshRecordingZoomsForSource,
@@ -562,6 +568,9 @@ export default function VideoEditor() {
 	const [speedRegions, setSpeedRegions] = useState<SpeedRegion[]>([]);
 	const [annotationRegions, setAnnotationRegions] = useState<AnnotationRegion[]>([]);
 	const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
+	const [timelinePanelHeight, setTimelinePanelHeight] = useState(
+		() => loadTimelinePanelHeight() || DEFAULT_TIMELINE_PANEL_HEIGHT_PX,
+	);
 	const [audioRegions, setAudioRegions] = useState<AudioRegion[]>([]);
 	const [selectedAudioId, setSelectedAudioId] = useState<string | null>(null);
 	const [brollRegions, setBrollRegions] = useState<BRollRegion[]>([]);
@@ -6597,8 +6606,8 @@ export default function VideoEditor() {
 				</div>
 			</div>
 
-			<div className="relative flex min-h-0 flex-1 flex-col gap-3 p-4">
-				<div className="flex min-h-0 flex-1 gap-3 relative z-10">
+			<div className="relative flex min-h-0 flex-1 flex-col">
+				<div className="relative z-10 flex min-h-0 flex-1 gap-3 p-4 pb-2">
 					{/* Settings sidebar */}
 					<div className="flex flex-shrink-0 gap-1.5">
 						{/* Icon rail */}
@@ -7231,11 +7240,15 @@ export default function VideoEditor() {
 						</div>
 					</div>
 				</div>
+				<TimelineResizeHandle
+					heightPx={timelinePanelHeight}
+					onHeightChange={setTimelinePanelHeight}
+				/>
 				<div
-					className="flex-shrink-0 flex flex-col"
+					className="flex flex-shrink-0 flex-col overflow-hidden rounded-t-xl border border-foreground/[0.06] border-b-0 bg-editor-timeline shadow-[0_-8px_32px_rgba(0,0,0,0.18)]"
 					style={{
-						height: "15%",
-						minHeight: 160,
+						height: timelinePanelHeight,
+						minHeight: MIN_TIMELINE_PANEL_HEIGHT_PX,
 					}}
 				>
 					<TimelineEditor

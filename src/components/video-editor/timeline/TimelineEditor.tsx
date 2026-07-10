@@ -223,6 +223,8 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 		const { setRange, clampedRange, handleTimelineWheel } = useTimelineRange({
 			totalMs,
 			timelineContainerRef,
+			minVisibleRangeMs: timelineScale.minVisibleRangeMs,
+			maxVisibleRangeMs: timelineScale.maxVisibleRangeMs,
 		});
 
 		const [liveSpanPreviewById, setLiveSpanPreviewById] = useState<Record<string, Span>>({});
@@ -455,10 +457,10 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 		}
 
 		return (
-			<div className="flex-1 min-h-0 flex flex-col bg-editor-bg overflow-hidden">
+			<div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-editor-timeline">
 				<div
 					ref={timelineContainerRef}
-					className="flex-1 min-h-0 overflow-auto bg-editor-bg relative"
+					className="custom-scrollbar relative min-h-0 flex-1 overflow-auto bg-editor-timeline outline-none focus-visible:ring-1 focus-visible:ring-[#2563EB]/40"
 					tabIndex={0}
 					onFocus={() => {
 						isTimelineFocusedRef.current = true;
@@ -483,6 +485,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 						onRangeChange={setRange}
 						minItemDurationMs={timelineScale.minItemDurationMs}
 						minVisibleRangeMs={timelineScale.minVisibleRangeMs}
+						maxVisibleRangeMs={timelineScale.maxVisibleRangeMs}
 						onItemSpanChange={handleItemSpanChange}
 						resolveTargetRowId={getResolvedDropRowId}
 						allRegionSpans={allRegionSpans}

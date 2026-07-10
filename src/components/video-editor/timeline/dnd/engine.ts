@@ -6,6 +6,12 @@ export interface DndEngineConfig {
 	totalMs: number;
 	minItemDurationMs: number;
 	minVisibleRangeMs: number;
+	/**
+	 * CapCut-style max zoom-out: how much time the viewport can show.
+	 * When larger than totalMs, empty track appears after the media so the
+	 * whole project can shrink smaller than the timeline width.
+	 */
+	maxVisibleRangeMs?: number;
 	allRegionSpans: TimelineRegionSpan[];
 	hasOverlap: (newSpan: Span, excludeId?: string, rowId?: string) => boolean;
 }
@@ -33,31 +39,44 @@ export function clampSpanToBounds(
 
 export function clampRange(
 	candidate: Range,
-	config: Pick<DndEngineConfig, "totalMs" | "minVisibleRangeMs">,
+	config: Pick<DndEngineConfig, "totalMs" | "minVisibleRangeMs" | "maxVisibleRangeMs">,
 ): Range {
 	const { totalMs, minVisibleRangeMs } = config;
-	if (totalMs === 0) {
+
+	// Empty / unknown media: keep a small positive window.
+	if (totalMs <= 0) {
 		const minSpan = Math.max(minVisibleRangeMs, 1);
-		const span = Math.max(candidate.end - candidate.start, minSpan);
-		const start = Math.max(0, Math.min(candidate.start, candidate.end - span));
+		const rawSpan = candidate.end - candidate.start;
+		const span = Math.max(Number.isFinite(rawSpan) ? rawSpan : minSpan, minSpan);
+		const start = Math.max(0, Number.isFinite(candidate.start) ? candidate.start : 0);
 		return { start, end: start + span };
 	}
 
-	const rawStart = Math.max(0, candidate.start);
-	const rawEnd = candidate.end;
-	const clampedEnd = Math.min(rawEnd, totalMs);
 	const minSpan = Math.min(Math.max(minVisibleRangeMs, 1), totalMs);
-	const desiredSpan = clampedEnd - rawStart;
-	const span = Math.min(Math.max(desiredSpan, minSpan), totalMs);
+	// CapCut: allow zooming out past the media end so clips shrink with empty track after.
+	const configuredMax = config.maxVisibleRangeMs;
+	const maxSpan = Math.max(
+		totalMs,
+		Number.isFinite(configuredMax) && (configuredMax as number) > 0
+			? (configuredMax as number)
+			: totalMs,
+	);
 
-	let finalStart = rawStart;
-	let finalEnd = finalStart + span;
-	if (finalEnd > totalMs) {
-		finalEnd = totalMs;
-		finalStart = Math.max(0, finalEnd - span);
-	}
+	const rawStart = Number.isFinite(candidate.start) ? candidate.start : 0;
+	const rawEnd = Number.isFinite(candidate.end) ? candidate.end : rawStart + totalMs;
+	// Measure the *proposed* span before clamping edges — otherwise zoom-out near the
+	// end of the video loses expansion past totalMs and never shrinks the strip.
+	const proposedSpan = rawEnd - rawStart;
+	const span = Math.min(
+		Math.max(Number.isFinite(proposedSpan) && proposedSpan > 0 ? proposedSpan : totalMs, minSpan),
+		maxSpan,
+	);
 
-	return { start: finalStart, end: finalEnd };
+	// When zoomed out past the media, pin start to 0 (empty space on the right, CapCut-style).
+	// When zoomed in, allow panning so the window can travel across [0, totalMs].
+	const maxStart = Math.max(0, totalMs - Math.min(span, totalMs));
+	const start = Math.max(0, Math.min(rawStart, maxStart));
+	return { start, end: start + span };
 }
 
 export function getSiblingSpans(

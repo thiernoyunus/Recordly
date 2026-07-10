@@ -1,11 +1,15 @@
+/* CapCut-style clip blocks: tighter radius, soft inner highlight, snappy hover */
 .glassGreen {
 	position: relative;
-	border-radius: 8px;
-	background: #183065;
+	border-radius: 6px;
+	background: linear-gradient(180deg, #1d3b78 0%, #183065 100%);
 	border: 1px solid #1b3a7f;
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 	transition:
-		background 0.15s ease,
-		border-color 0.15s ease;
+		background 0.12s ease,
+		border-color 0.12s ease,
+		box-shadow 0.12s ease,
+		filter 0.12s ease;
 }
 
 .glassGreen:hover {
@@ -22,12 +26,14 @@
 
 .glassRed {
 	position: relative;
-	border-radius: 8px;
-	background: #652425;
+	border-radius: 6px;
+	background: linear-gradient(180deg, #7a2c2d 0%, #652425 100%);
 	border: 1px solid #802a2b;
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 	transition:
-		background 0.15s ease,
-		border-color 0.15s ease;
+		background 0.12s ease,
+		border-color 0.12s ease,
+		box-shadow 0.12s ease;
 }
 
 .glassRed:hover {
@@ -44,12 +50,14 @@
 
 .glassYellow {
 	position: relative;
-	border-radius: 8px;
-	background: #4e4726;
+	border-radius: 6px;
+	background: linear-gradient(180deg, #5f552b 0%, #4e4726 100%);
 	border: 1px solid #62582c;
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 	transition:
-		background 0.15s ease,
-		border-color 0.15s ease;
+		background 0.12s ease,
+		border-color 0.12s ease,
+		box-shadow 0.12s ease;
 }
 
 .glassYellow:hover {
@@ -66,12 +74,14 @@
 
 .glassAmber {
 	position: relative;
-	border-radius: 8px;
-	background: #67460f;
+	border-radius: 6px;
+	background: linear-gradient(180deg, #7e540f 0%, #67460f 100%);
 	border: 1px solid #83570f;
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 	transition:
-		background 0.15s ease,
-		border-color 0.15s ease;
+		background 0.12s ease,
+		border-color 0.12s ease,
+		box-shadow 0.12s ease;
 }
 
 .glassAmber:hover {
@@ -88,12 +98,14 @@
 
 .glassPurple {
 	position: relative;
-	border-radius: 8px;
-	background: #4a2a69;
+	border-radius: 6px;
+	background: linear-gradient(180deg, #593180 0%, #4a2a69 100%);
 	border: 1px solid #5c3385;
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
 	transition:
-		background 0.15s ease,
-		border-color 0.15s ease;
+		background 0.12s ease,
+		border-color 0.12s ease,
+		box-shadow 0.12s ease;
 }
 
 .glassPurple:hover {
@@ -110,12 +122,14 @@
 
 .glassCyan {
 	position: relative;
-	border-radius: 8px;
-	background: #183065;
+	border-radius: 6px;
+	background: linear-gradient(180deg, #1d3b78 0%, #183065 100%);
 	border: 1px solid #1b3a7f;
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
 	transition:
-		background 0.15s ease,
-		border-color 0.15s ease;
+		background 0.12s ease,
+		border-color 0.12s ease,
+		box-shadow 0.12s ease;
 }
 
 .glassCyan:hover {
@@ -132,12 +146,14 @@
 
 .glassDarkGreen {
 	position: relative;
-	border-radius: 8px;
-	background: #164f2d;
+	border-radius: 6px;
+	background: linear-gradient(180deg, #186234 0%, #164f2d 100%);
 	border: 1px solid #196b38;
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 	transition:
-		background 0.15s ease,
-		border-color 0.15s ease;
+		background 0.12s ease,
+		border-color 0.12s ease,
+		box-shadow 0.12s ease;
 }
 
 .glassDarkGreen:hover {
@@ -154,12 +170,14 @@
 
 .glassCaption {
 	position: relative;
-	border-radius: 8px;
-	background: #5b2746;
+	border-radius: 6px;
+	background: linear-gradient(180deg, #6d2f54 0%, #5b2746 100%);
 	border: 1px solid #7a3157;
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 	transition:
-		background 0.15s ease,
-		border-color 0.15s ease;
+		background 0.12s ease,
+		border-color 0.12s ease,
+		box-shadow 0.12s ease;
 }
 
 .glassCaption:hover {
@@ -176,12 +194,14 @@
 
 .glassTeal {
 	position: relative;
-	border-radius: 8px;
-	background: #164e4a;
+	border-radius: 6px;
+	background: linear-gradient(180deg, #1a615c 0%, #164e4a 100%);
 	border: 1px solid #1c6b64;
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 	transition:
-		background 0.15s ease,
-		border-color 0.15s ease;
+		background 0.12s ease,
+		border-color 0.12s ease,
+		box-shadow 0.12s ease;
 }
 
 .glassTeal:hover {
@@ -199,12 +219,14 @@
 /* B-roll track — warm orange, distinct from speed amber */
 .glassOrange {
 	position: relative;
-	border-radius: 8px;
-	background: #6b3a12;
+	border-radius: 6px;
+	background: linear-gradient(180deg, #824612 0%, #6b3a12 100%);
 	border: 1px solid #8a4a16;
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 	transition:
-		background 0.15s ease,
-		border-color 0.15s ease;
+		background 0.12s ease,
+		border-color 0.12s ease,
+		box-shadow 0.12s ease;
 }
 
 .glassOrange:hover {
@@ -219,13 +241,13 @@
 	z-index: 10;
 }
 
-/* Pill resize handle — visible on hover */
+/* CapCut-style edge grips — pill handles visible on hover/selection */
 .zoomEndCap {
 	position: absolute;
 	top: 50%;
 	bottom: auto;
-	height: 70%;
-	width: 4px;
+	height: 58%;
+	width: 5px;
 	pointer-events: auto;
 	z-index: 2;
 	opacity: 0;
@@ -233,11 +255,13 @@
 	align-items: center;
 	justify-content: center;
 	transform: translateY(-50%);
-	border-radius: 2px;
-	background: rgba(255, 255, 255, 0.88);
+	border-radius: 999px;
+	background: rgba(255, 255, 255, 0.92);
+	box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
 	transition:
-		opacity 0.15s ease,
-		background 0.15s ease;
+		opacity 0.12s ease,
+		background 0.12s ease,
+		transform 0.12s ease;
 }
 
 /* --- Light-mode overrides --- */
@@ -386,17 +410,19 @@
 .glassCyan:hover .zoomEndCap,
 .glassDarkGreen:hover .zoomEndCap,
 .glassCaption:hover .zoomEndCap,
-.glassTeal:hover .zoomEndCap {
+.glassTeal:hover .zoomEndCap,
+.glassOrange:hover .zoomEndCap,
+.selected .zoomEndCap {
 	opacity: 1;
 }
 
 .zoomEndCap.left {
-	left: 6px;
+	left: 4px;
 	cursor: col-resize;
 }
 
 .zoomEndCap.right {
-	right: 6px;
+	right: 4px;
 	cursor: col-resize;
 }
 

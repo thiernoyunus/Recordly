@@ -12,18 +12,39 @@ describe("timeline core/time", () => {
 	it("creates fallback range for empty or invalid duration", () => {
 		expect(createInitialRange(0)).toEqual({ start: 0, end: 1000 });
 		expect(createInitialRange(-10)).toEqual({ start: 0, end: 1000 });
-		expect(createInitialRange(2500)).toEqual({ start: 0, end: 2500 });
+	});
+
+	it("opens CapCut-style with empty track after the media (not full-width fit)", () => {
+		const range = createInitialRange(2500);
+		expect(range.start).toBe(0);
+		// Media is 2.5s; view should be longer so the strip does not fill the bar.
+		expect(range.end).toBe(2500 * 2.5);
+
+		// Longer project (14 min) → ~2.5× ruler like CapCut.
+		const longProject = createInitialRange(14 * 60 * 1000);
+		expect(longProject.end).toBe(14 * 60 * 1000 * 2.5);
+
+		// Respect max ceiling when provided.
+		expect(createInitialRange(10_000, { maxVisibleRangeMs: 12_000 })).toEqual({
+			start: 0,
+			end: 12_000,
+		});
 	});
 
 	it("computes scale defaults and caps", () => {
-		expect(calculateTimelineScale(0)).toEqual({
-			minItemDurationMs: 100,
-			defaultItemDurationMs: 1000,
-			minVisibleRangeMs: 300,
-		});
+		const empty = calculateTimelineScale(0);
+		expect(empty.minItemDurationMs).toBe(100);
+		expect(empty.defaultItemDurationMs).toBe(1000);
+		expect(empty.minVisibleRangeMs).toBe(300);
+		expect(empty.maxVisibleRangeMs).toBeGreaterThan(empty.defaultItemDurationMs);
+
 		expect(calculateTimelineScale(1).defaultItemDurationMs).toBe(100);
 		expect(calculateTimelineScale(100).defaultItemDurationMs).toBe(5000);
 		expect(calculateTimelineScale(10_000).defaultItemDurationMs).toBe(30000);
+
+		// CapCut-style: max zoom-out is several× the project so the strip can shrink.
+		const long = calculateTimelineScale(100);
+		expect(long.maxVisibleRangeMs).toBeGreaterThanOrEqual(100_000 * 4);
 	});
 
 	it("formats timeline labels in fractional, whole-second, and hour modes", () => {

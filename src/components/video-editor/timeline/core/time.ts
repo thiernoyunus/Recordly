@@ -5,6 +5,8 @@ export interface TimelineScaleConfig {
 	minItemDurationMs: number;
 	defaultItemDurationMs: number;
 	minVisibleRangeMs: number;
+	/** CapCut-style zoom-out ceiling (can exceed total media length). */
+	maxVisibleRangeMs: number;
 }
 
 const SCALE_CANDIDATES = [
@@ -55,21 +57,45 @@ export function calculateTimelineScale(durationSeconds: number): TimelineScaleCo
 			? Math.max(minItemDurationMs, Math.min(Math.round(totalMs * 0.05), 30000))
 			: Math.max(minItemDurationMs, 1000);
 
+	// Tightest zoom-in: ~0.3s window so tiny regions can still be scrubbed.
 	const minVisibleRangeMs = 300;
+	// CapCut-style zoom-out: show several× the project so the media strip can
+	// shrink well below the timeline width with empty track after it.
+	const maxVisibleRangeMs =
+		totalMs > 0
+			? Math.max(totalMs * 4, totalMs + 180_000, 10_000)
+			: Math.max(defaultItemDurationMs * 10, 10_000);
 
 	return {
 		minItemDurationMs,
 		defaultItemDurationMs,
 		minVisibleRangeMs,
+		maxVisibleRangeMs,
 	};
 }
 
-export function createInitialRange(totalMs: number): Range {
-	if (totalMs > 0) {
-		return { start: 0, end: totalMs };
+/**
+ * Opening view of the timeline. CapCut does NOT stretch the clip to fill the bar —
+ * the media sits on the left and empty track continues after it.
+ */
+export function createInitialRange(
+	totalMs: number,
+	options?: { maxVisibleRangeMs?: number },
+): Range {
+	if (totalMs <= 0) {
+		return { start: 0, end: FALLBACK_RANGE_MS };
 	}
 
-	return { start: 0, end: FALLBACK_RANGE_MS };
+	const maxVisible = options?.maxVisibleRangeMs;
+	const ceiling =
+		Number.isFinite(maxVisible) && (maxVisible as number) > 0
+			? (maxVisible as number)
+			: totalMs * 4;
+
+	// ~2.5× media so a ~14 min clip opens like CapCut (~35 min ruler, empty track after).
+	// Short clips still get padding without blowing past the zoom-out ceiling.
+	const paddedEnd = Math.min(ceiling, Math.max(totalMs * 2.5, totalMs * 1.25));
+	return { start: 0, end: paddedEnd };
 }
 
 export function normalizeWheelDeltaToPixels(delta: number, deltaMode: number) {

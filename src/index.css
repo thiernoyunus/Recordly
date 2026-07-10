@@ -102,7 +102,7 @@
 		--chart-4: 280 65% 60%;
 		--chart-5: 340 75% 55%;
 
-		/* Editor surface colors — dark mode */
+		/* Editor surface colors — dark mode (CapCut-dense timeline neutrals) */
 		--editor-bg: 240 6% 7%;
 		--editor-header: 240 5% 8.5%;
 		--editor-panel: 240 5% 9%;
@@ -110,9 +110,9 @@
 		--editor-surface-alt: 240 5% 11%;
 		--editor-dialog: 240 10% 3%;
 		--editor-dialog-alt: 237 9% 5%;
-		--editor-timeline: 240 6% 7%;
-		--editor-row: 240 4% 10%;
-		--editor-subrow: 240 7% 15%;
+		--editor-timeline: 240 7% 6%;
+		--editor-row: 240 5% 9%;
+		--editor-subrow: 240 6% 12%;
 
 		/* Slider track colors — dark mode */
 		--slider-track: 0 0% 100% / 0.12;

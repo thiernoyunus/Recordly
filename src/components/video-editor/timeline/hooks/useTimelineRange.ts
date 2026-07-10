@@ -1,10 +1,13 @@
 import type { Range } from "dnd-timeline";
 import { useCallback, useEffect, useMemo, useState, type RefObject, type WheelEvent } from "react";
 import { createInitialRange, normalizeWheelDeltaToPixels } from "../core/time";
+import { clampRange } from "../dnd/engine";
 
 interface UseTimelineRangeParams {
 	totalMs: number;
 	timelineContainerRef: RefObject<HTMLDivElement>;
+	minVisibleRangeMs?: number;
+	maxVisibleRangeMs?: number;
 }
 
 export interface TimelineWheelPanDeltaInput {
@@ -41,22 +44,37 @@ export function resolveTimelineWheelPanDeltaPx({
 	return 0;
 }
 
-export function useTimelineRange({ totalMs, timelineContainerRef }: UseTimelineRangeParams) {
-	const [range, setRange] = useState<Range>(() => createInitialRange(totalMs));
+export function useTimelineRange({
+	totalMs,
+	timelineContainerRef,
+	minVisibleRangeMs = 300,
+	maxVisibleRangeMs,
+}: UseTimelineRangeParams) {
+	const resolvedMaxVisible =
+		maxVisibleRangeMs ?? (totalMs > 0 ? totalMs * 4 : undefined);
+
+	const [range, setRange] = useState<Range>(() =>
+		createInitialRange(totalMs, { maxVisibleRangeMs: resolvedMaxVisible }),
+	);
+
+	const rangeClampConfig = useMemo(
+		() => ({
+			totalMs,
+			minVisibleRangeMs,
+			maxVisibleRangeMs: resolvedMaxVisible,
+		}),
+		[minVisibleRangeMs, resolvedMaxVisible, totalMs],
+	);
 
 	useEffect(() => {
-		setRange(createInitialRange(totalMs));
-	}, [totalMs]);
+		// Re-open with CapCut-style padding whenever the project duration changes.
+		setRange(createInitialRange(totalMs, { maxVisibleRangeMs: resolvedMaxVisible }));
+	}, [resolvedMaxVisible, totalMs]);
 
-	const clampedRange = useMemo<Range>(() => {
-		if (totalMs === 0) {
-			return range;
-		}
-		return {
-			start: Math.max(0, Math.min(range.start, totalMs)),
-			end: Math.min(range.end, totalMs),
-		};
-	}, [range, totalMs]);
+	const clampedRange = useMemo<Range>(
+		() => clampRange(range, rangeClampConfig),
+		[range, rangeClampConfig],
+	);
 
 	const panTimelineRange = useCallback(
 		(deltaMs: number) => {
@@ -65,13 +83,18 @@ export function useTimelineRange({ totalMs, timelineContainerRef }: UseTimelineR
 			}
 
 			setRange((previous) => {
-				const visibleSpan = Math.max(1, previous.end - previous.start);
-				const maxStart = Math.max(0, totalMs - visibleSpan);
-				const nextStart = Math.max(0, Math.min(previous.start + deltaMs, maxStart));
-				return { start: nextStart, end: nextStart + visibleSpan };
+				const normalized = clampRange(previous, rangeClampConfig);
+				const visibleSpan = Math.max(1, normalized.end - normalized.start);
+				// When zoomed out past the media, maxStart is 0 (content pinned left).
+				const maxStart = Math.max(0, totalMs - Math.min(visibleSpan, totalMs));
+				const nextStart = Math.max(0, Math.min(normalized.start + deltaMs, maxStart));
+				return clampRange(
+					{ start: nextStart, end: nextStart + visibleSpan },
+					rangeClampConfig,
+				);
 			});
 		},
-		[totalMs],
+		[rangeClampConfig, totalMs],
 	);
 
 	const handleTimelineWheel = useCallback(
