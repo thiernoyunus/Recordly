@@ -37,5 +37,16 @@ describe("resolveSourceTrackRoutingPolicy", () => {
 		expect(policy.playbackPaths).toEqual(["/tmp/recording.mic.wav"]);
 		expect(policy.muteEmbeddedPreview).toBe(false);
 		expect(policy.includeEmbeddedInExport).toBe(true);
+		// The mac recorder bakes system audio into the video and keeps the mic
+		// separate, so the embedded stream is the system track — not a mix.
+		expect(policy.embeddedTrackId).toBe("system");
+	});
+
+	it("treats embedded audio as a mix when no mic sidecar is present", () => {
+		const policy = resolveSourceTrackRoutingPolicy("/tmp/recording.mp4", [
+			"/tmp/recording.mp4",
+		]);
+
+		expect(policy.embeddedTrackId).toBe("mixed");
 	});
 });

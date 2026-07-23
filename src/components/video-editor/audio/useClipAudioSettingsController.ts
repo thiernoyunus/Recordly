@@ -3,12 +3,14 @@ import {
 	resolveSourceAudioTrackGain,
 	type SourceAudioTrackSettings,
 } from "@/components/video-editor/audio/audioTypes";
-import { getSourceTrackIdFromPath } from "@/lib/exporter/audioRoutingEngine";
+import { getSourceTrackIdFromPath, type SourceTrackId } from "@/lib/exporter/audioRoutingEngine";
 import { useSourceAudioTrackSettings } from "./useSourceAudioTrackSettings";
 
 interface UseClipAudioSettingsControllerParams {
 	selectedClipId: string | null;
 	activeClipId: string | null;
+	/** Which track the video's own audio stream belongs to, per the routing policy. */
+	embeddedTrackId: SourceTrackId;
 	sourceAudioTrackSettingsByClip: Record<string, SourceAudioTrackSettings>;
 	setSourceAudioTrackSettingsByClip: React.Dispatch<
 		React.SetStateAction<Record<string, SourceAudioTrackSettings>>
@@ -22,6 +24,7 @@ interface UseClipAudioSettingsControllerParams {
 export function useClipAudioSettingsController({
 	selectedClipId,
 	activeClipId,
+	embeddedTrackId,
 	sourceAudioTrackSettingsByClip,
 	setSourceAudioTrackSettingsByClip,
 	defaultSourceAudioTrackSettings,
@@ -49,13 +52,6 @@ export function useClipAudioSettingsController({
 			activeClipId ? activeSourceAudioTrackSettings : selectedClipSourceAudioTrackSettings,
 		[activeClipId, activeSourceAudioTrackSettings, selectedClipSourceAudioTrackSettings],
 	);
-
-	const embeddedTrackId = useMemo<"mixed" | "system">(() => {
-		const hasMixedTrack = sourceAudioTrackMeta.some((track) => track.id === "mixed");
-		if (hasMixedTrack) return "mixed";
-		const hasSystemTrack = sourceAudioTrackMeta.some((track) => track.id === "system");
-		return hasSystemTrack ? "system" : "mixed";
-	}, [sourceAudioTrackMeta]);
 
 	const embeddedSourcePreviewGain = useMemo(() => {
 		const settings = previewSourceAudioTrackSettings[embeddedTrackId] ?? {

@@ -749,7 +749,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 								backgroundAlpha: 0,
 								antialias: true,
 								failIfMajorPerformanceCaveat: false,
-								resolution: window.devicePixelRatio || 1,
+								resolution: Math.max(2, window.devicePixelRatio || 1),
 								autoDensity: true,
 								preference: backend,
 								autoStart: true,

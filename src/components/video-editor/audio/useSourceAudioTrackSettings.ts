@@ -28,6 +28,24 @@ export interface UseSourceAudioTrackSettingsResult {
 	onSelectedClipSourceAudioTrackNormalizeChange: (id: string, normalize: boolean) => void;
 }
 
+/**
+ * Apply a volume/normalize change to one track. Returns the original object
+ * unchanged when nothing moved, so React can skip the re-render.
+ */
+export function withSourceTrackSetting(
+	settings: SourceAudioTrackSettings,
+	id: string,
+	patch: { volume?: number; normalize?: boolean },
+): SourceAudioTrackSettings {
+	const previous = settings[id];
+	const volume = clampSourceAudioVolume(patch.volume ?? previous?.volume);
+	const normalize = patch.normalize ?? previous?.normalize ?? false;
+	if (previous?.volume === volume && previous?.normalize === normalize) {
+		return settings;
+	}
+	return { ...settings, [id]: { volume, normalize } };
+}
+
 function isSameTrackMeta(left: SourceAudioTrackMeta, right: SourceAudioTrackMeta): boolean {
 	if (left.length !== right.length) return false;
 	for (let index = 0; index < left.length; index += 1) {
@@ -113,48 +131,21 @@ export function useSourceAudioTrackSettings({
 		[defaultSourceAudioTrackSettings, sourceAudioTrackSettingsByClip],
 	);
 
-	const onSelectedClipSourceAudioTrackVolumeChange = useCallback(
-		(id: string, volume: number) => {
-			const nextVolume = clampSourceAudioVolume(volume);
+	const applySourceTrackSetting = useCallback(
+		(id: string, patch: { volume?: number; normalize?: boolean }) => {
+			// Always move the project-wide default. Playback outside any clip, and
+			// clips with no setting of their own, read from here — leaving it behind
+			// means a mute silently lifts as soon as the playhead leaves the clip.
+			setDefaultSourceAudioTrackSettings((prev) => withSourceTrackSetting(prev, id, patch));
 
-			// No clip selected → edit project-wide defaults so the next selection
-			// and unscoped playback still pick up the user's mic/system levels.
 			if (!selectedClipId) {
-				setDefaultSourceAudioTrackSettings((prev) => {
-					const prevNormalize = prev[id]?.normalize ?? false;
-					if (prev[id]?.volume === nextVolume && prev[id]?.normalize === prevNormalize) {
-						return prev;
-					}
-					return {
-						...prev,
-						[id]: {
-							volume: nextVolume,
-							normalize: prevNormalize,
-						},
-					};
-				});
 				return;
 			}
 
 			setSourceAudioTrackSettingsByClip((prev) => {
 				const prevClip = prev[selectedClipId] ?? defaultSourceAudioTrackSettings;
-				const prevNormalize = prevClip[id]?.normalize ?? false;
-				if (
-					prevClip[id]?.volume === nextVolume &&
-					prevClip[id]?.normalize === prevNormalize
-				) {
-					return prev;
-				}
-				return {
-					...prev,
-					[selectedClipId]: {
-						...prevClip,
-						[id]: {
-							volume: nextVolume,
-							normalize: prevNormalize,
-						},
-					},
-				};
+				const nextClip = withSourceTrackSetting(prevClip, id, patch);
+				return nextClip === prevClip ? prev : { ...prev, [selectedClipId]: nextClip };
 			});
 		},
 		[
@@ -165,48 +156,14 @@ export function useSourceAudioTrackSettings({
 		],
 	);
 
+	const onSelectedClipSourceAudioTrackVolumeChange = useCallback(
+		(id: string, volume: number) => applySourceTrackSetting(id, { volume }),
+		[applySourceTrackSetting],
+	);
+
 	const onSelectedClipSourceAudioTrackNormalizeChange = useCallback(
-		(id: string, normalize: boolean) => {
-			if (!selectedClipId) {
-				setDefaultSourceAudioTrackSettings((prev) => {
-					const prevVolume = clampSourceAudioVolume(prev[id]?.volume);
-					if (prev[id]?.normalize === normalize) {
-						return prev;
-					}
-					return {
-						...prev,
-						[id]: {
-							volume: prevVolume,
-							normalize,
-						},
-					};
-				});
-				return;
-			}
-			setSourceAudioTrackSettingsByClip((prev) => {
-				const prevClip = prev[selectedClipId] ?? defaultSourceAudioTrackSettings;
-				const prevVolume = clampSourceAudioVolume(prevClip[id]?.volume);
-				if (prevClip[id]?.normalize === normalize) {
-					return prev;
-				}
-				return {
-					...prev,
-					[selectedClipId]: {
-						...prevClip,
-						[id]: {
-							volume: prevVolume,
-							normalize,
-						},
-					},
-				};
-			});
-		},
-		[
-			defaultSourceAudioTrackSettings,
-			selectedClipId,
-			setDefaultSourceAudioTrackSettings,
-			setSourceAudioTrackSettingsByClip,
-		],
+		(id: string, normalize: boolean) => applySourceTrackSetting(id, { normalize }),
+		[applySourceTrackSetting],
 	);
 
 	return {

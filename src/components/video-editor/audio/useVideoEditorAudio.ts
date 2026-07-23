@@ -106,6 +106,7 @@ export function useVideoEditorAudio({
 	} = useClipAudioSettingsController({
 		selectedClipId,
 		activeClipId: activeClipIdAtCurrentTime,
+		embeddedTrackId: sourceTrackRoutingPolicy.embeddedTrackId,
 		sourceAudioTrackSettingsByClip,
 		setSourceAudioTrackSettingsByClip,
 		defaultSourceAudioTrackSettings,
