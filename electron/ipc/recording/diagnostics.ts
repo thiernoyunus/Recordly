@@ -201,9 +201,7 @@ export async function probeMediaDurationSeconds(filePath: string): Promise<numbe
 			return duration;
 		}
 	} finally {
-		console.log(
-			`[PERF:MAIN] probeMediaDurationSeconds: COMPLETED in ${Date.now() - start}ms`,
-		);
+		console.log(`[PERF:MAIN] probeMediaDurationSeconds: COMPLETED in ${Date.now() - start}ms`);
 	}
 	return 0;
 }
@@ -292,9 +290,7 @@ export async function probeVideoStreamDuration(
 	} catch {
 		return null;
 	} finally {
-		console.log(
-			`[PERF:MAIN] probeVideoStreamDuration: COMPLETED in ${Date.now() - start}ms`,
-		);
+		console.log(`[PERF:MAIN] probeVideoStreamDuration: COMPLETED in ${Date.now() - start}ms`);
 	}
 }
 
@@ -528,7 +524,23 @@ export async function getCompanionAudioFallbackInfo(videoPath: string) {
 		if (!hasUsableMacSystemCompanion && usableMacMicOnlyCompanions.length > 0) {
 			paths = usableMacMicOnlyCompanions;
 		} else if (hasUsableMacSystemCompanion) {
-			paths = [videoPath];
+			// Video has system audio embedded. The "keep tracks separate"
+			// optimization stores the mic as a separate sidecar — include it
+			// so mic audio is not silently dropped from export.
+			const macMicCompanionPaths = Array.from(
+				new Set(
+					companionCandidates.flatMap((candidate) =>
+						candidate.platform === "mac" &&
+						candidate.usablePaths.includes(candidate.micPath)
+							? [candidate.micPath]
+							: [],
+					),
+				),
+			);
+			paths =
+				macMicCompanionPaths.length > 0
+					? [videoPath, ...macMicCompanionPaths]
+					: [videoPath];
 		} else {
 			const companionPaths = Array.from(
 				new Set(

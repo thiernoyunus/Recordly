@@ -72,6 +72,10 @@ export function useAudioPreviewSync({
 	const sourceAudioMasterGainRef = useRef<GainNode | null>(null);
 	const sourceAudioResumePromiseRef = useRef<Promise<void> | null>(null);
 	const lastSourceAudioSyncTimeRef = useRef<number | null>(null);
+	// Mirrors the latest isPlaying so async play() callbacks can bail if the
+	// user paused while AudioContext.resume() was still in flight.
+	const isPlayingRef = useRef(isPlaying);
+	isPlayingRef.current = isPlaying;
 
 	const ensureSourceAudioContext = useCallback(() => {
 		if (!sourceAudioContextRef.current) {
@@ -475,6 +479,13 @@ export function useAudioPreviewSync({
 				// playing, keep it going even while the clock momentarily stalls.
 				if (videoClockAdvanced || !audio.paused) {
 					void ensureSourceAudioRunning().then(() => {
+						// The user may have paused while resume() was in flight.
+						if (!isPlayingRef.current) {
+							if (!audio.paused) {
+								audio.pause();
+							}
+							return;
+						}
 						audio.play().catch(() => undefined);
 					});
 				}
