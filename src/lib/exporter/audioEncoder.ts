@@ -715,24 +715,16 @@ export class AudioProcessor {
 				system: resolveSourceTrackGain(sourceAudioTrackSettings, "system"),
 				mixed: resolveSourceTrackGain(sourceAudioTrackSettings, "mixed"),
 			},
-			embeddedGain: Math.max(
-				0,
-				Math.min(
-					2,
-					sourceAudioTrackSettings?.mixed
-						? resolveSourceTrackGain(sourceAudioTrackSettings, "mixed")
-						: sourceAudioTrackSettings?.system
-							? resolveSourceTrackGain(sourceAudioTrackSettings, "system")
-							: 1,
-				),
-			),
 		});
 
 		// Decode embedded source audio separately from companion sidecars.
 		const mainBuffer = resolvedPlan.includeEmbeddedInExport
 			? await this.decodeAudioFromUrl(videoUrl)
 			: null;
-		const mainBufferGain = resolveSourceTrackGain(sourceAudioTrackSettings, "mixed");
+		const mainBufferGain = resolveSourceTrackGain(
+			sourceAudioTrackSettings,
+			resolvedPlan.embeddedTrackId,
+		);
 		const mainBufferEntry = mainBuffer ? { buffer: mainBuffer, gain: mainBufferGain } : null;
 		if (this.cancelled) throw new Error("Export cancelled");
 

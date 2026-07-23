@@ -5,6 +5,7 @@ import {
 
 export interface SourceTrackRoutingPolicy {
 	hasEmbeddedSourceAudio: boolean;
+	embeddedTrackId: SourceTrackId;
 	pathsByTrack: Partial<Record<SourceTrackId, string>>;
 	playbackPaths: string[];
 	muteEmbeddedPreview: boolean;
@@ -22,6 +23,7 @@ export function resolveSourceTrackRoutingPolicy(
 
 	return {
 		hasEmbeddedSourceAudio: plan.hasEmbeddedSourceAudio,
+		embeddedTrackId: plan.embeddedTrackId,
 		pathsByTrack: plan.pathsByTrack,
 		playbackPaths: plan.playbackPaths,
 		muteEmbeddedPreview: plan.muteEmbeddedPreview,

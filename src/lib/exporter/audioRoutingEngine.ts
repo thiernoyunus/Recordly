@@ -21,6 +21,7 @@ export interface ResolvedAudioTrack {
 
 export interface ResolvedAudioPlan {
 	hasEmbeddedSourceAudio: boolean;
+	embeddedTrackId: SourceTrackId;
 	pathsByTrack: Partial<Record<SourceTrackId, string>>;
 	playbackPaths: string[];
 	muteEmbeddedPreview: boolean;
@@ -46,7 +47,6 @@ export function buildResolvedAudioPlan(input: {
 	sourceAudioFallbackPaths: string[] | null | undefined;
 	audioRegions?: AudioRegion[];
 	sourceTrackGainById?: Partial<Record<SourceTrackId, number>>;
-	embeddedGain?: number;
 	masterGain?: number;
 }): ResolvedAudioPlan {
 	const { hasEmbeddedSourceAudio, externalAudioPaths } = resolveSourceAudioFallbackPaths(
@@ -61,6 +61,15 @@ export function buildResolvedAudioPlan(input: {
 			pathsByTrack[trackId] = path;
 		}
 	}
+
+	// Which track does the video's own audio stream belong to? The mac recorder
+	// bakes system audio into the video and writes the mic to a sidecar, so an
+	// embedded stream sitting next to a mic-only sidecar *is* the system track —
+	// muting "system" has to silence it. Anything else is an undifferentiated mix.
+	const embeddedTrackId: SourceTrackId =
+		Boolean(pathsByTrack.mic) && !pathsByTrack.system && !pathsByTrack.mixed
+			? "system"
+			: "mixed";
 
 	const hasDedicatedTracks = Boolean(pathsByTrack.system || pathsByTrack.mic);
 	const playbackPaths: string[] = [];
@@ -109,7 +118,7 @@ export function buildResolvedAudioPlan(input: {
 				path: input.videoResource,
 				startDelayMs: 0,
 			},
-			gain: clampGain(input.embeddedGain ?? input.sourceTrackGainById?.mixed ?? 1, 2),
+			gain: clampGain(input.sourceTrackGainById?.[embeddedTrackId] ?? 1, 2),
 			timelineBinding: {
 				startMs: 0,
 				endMs: Number.POSITIVE_INFINITY,
@@ -119,6 +128,7 @@ export function buildResolvedAudioPlan(input: {
 
 	return {
 		hasEmbeddedSourceAudio,
+		embeddedTrackId,
 		pathsByTrack,
 		playbackPaths,
 		muteEmbeddedPreview: hasDedicatedTracks && !includeEmbeddedInExport,
