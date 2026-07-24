@@ -29,7 +29,7 @@ export function MicPopover({
 	devices: DeviceOption[];
 	microphoneDeviceId?: string;
 	selectedDeviceId?: string;
-	onSelectDevice: (deviceId: string) => void;
+	onSelectDevice: (deviceId: string, deviceLabel: string) => void;
 }) {
 	const t = useScopedT("launch");
 	const { isOpen, requestOpen, requestClose } = useLaunchPopoverCoordinator();
@@ -83,7 +83,7 @@ export function MicPopover({
 						microphoneEnabled &&
 						(microphoneDeviceId === device.deviceId || selectedDeviceId === device.deviceId)
 					}
-					onSelect={() => onSelectDevice(device.deviceId)}
+					onSelect={() => onSelectDevice(device.deviceId, device.label)}
 				/>
 			))}
 			{devices.length === 0 && (

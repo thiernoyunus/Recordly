@@ -924,6 +924,7 @@ interface Window {
 			success: boolean;
 			microphoneEnabled: boolean;
 			microphoneDeviceId?: string;
+			microphoneLabel?: string;
 			systemAudioEnabled: boolean;
 		}>;
 		getRecordingAudioLabConfig: () => Promise<{
@@ -933,6 +934,7 @@ interface Window {
 		setRecordingPreferences: (prefs: {
 			microphoneEnabled?: boolean;
 			microphoneDeviceId?: string;
+			microphoneLabel?: string;
 			systemAudioEnabled?: boolean;
 		}) => Promise<{ success: boolean; error?: string }>;
 		/** Countdown timer before recording */

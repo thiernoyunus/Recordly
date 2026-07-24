@@ -987,6 +987,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	setRecordingPreferences: (prefs: {
 		microphoneEnabled?: boolean;
 		microphoneDeviceId?: string;
+		microphoneLabel?: string;
 		systemAudioEnabled?: boolean;
 	}) => ipcRenderer.invoke("set-recording-preferences", prefs),
 	getCountdownDelay: () => ipcRenderer.invoke("get-countdown-delay"),
