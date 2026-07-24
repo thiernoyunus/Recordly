@@ -122,8 +122,19 @@ function LaunchWindowContent() {
 			return;
 		}
 
-		setMicrophoneDeviceId(selectedDeviceId === "default" ? undefined : selectedDeviceId);
-	}, [selectedDeviceId, setMicrophoneDeviceId]);
+		if (selectedDeviceId === "default") {
+			setMicrophoneDeviceId(undefined);
+			return;
+		}
+
+		// Pass the label so an auto-selected mic (one the user never clicked) still
+		// reaches the native recorder by name. Undefined while devices load, which
+		// leaves any previously resolved label intact.
+		setMicrophoneDeviceId(
+			selectedDeviceId,
+			devices.find((device) => device.deviceId === selectedDeviceId)?.label || undefined,
+		);
+	}, [devices, selectedDeviceId, setMicrophoneDeviceId]);
 
 	useEffect(() => {
 		if (selectedVideoDeviceId && selectedVideoDeviceId !== "default") {

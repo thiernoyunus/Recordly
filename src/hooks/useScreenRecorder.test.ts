@@ -5,6 +5,7 @@ import {
 	createProcessedMicrophoneConstraints,
 	normalizeBrowserMicrophoneProfile,
 	resolveBrowserCaptureCursorPolicy,
+	resolveMicrophoneSelection,
 	shouldUseNativeWindowsCaptureForSource,
 } from "./useScreenRecorder";
 
@@ -845,5 +846,39 @@ describe("useScreenRecorder state machine", () => {
 			expect(recorder.state).toBe("inactive");
 			expect(webcam.state).toBe("inactive");
 		});
+	});
+});
+
+describe("resolveMicrophoneSelection", () => {
+	const SHURE = { deviceId: "browser-id-a", label: "Shure MV7" };
+
+	it("keeps the label when a caller syncs the same id without one", () => {
+		// LaunchWindow mirrors selectedDeviceId right after the user picks a mic.
+		// Dropping the label here left the native recorder with nothing to match
+		// on, so it silently recorded from the system default instead.
+		expect(resolveMicrophoneSelection(SHURE, "browser-id-a")).toBeNull();
+	});
+
+	it("drops the label when the device changes", () => {
+		// Carrying it over would name the wrong microphone.
+		expect(resolveMicrophoneSelection(SHURE, "browser-id-b")).toEqual({
+			deviceId: "browser-id-b",
+			label: undefined,
+		});
+	});
+
+	it("takes a newly supplied label for the same device", () => {
+		expect(resolveMicrophoneSelection(SHURE, "browser-id-a", "Shure MV7 (14ed:1012)")).toEqual({
+			deviceId: "browser-id-a",
+			label: "Shure MV7 (14ed:1012)",
+		});
+	});
+
+	it("records the label when there was no prior selection", () => {
+		expect(resolveMicrophoneSelection({}, "browser-id-a", "Shure MV7")).toEqual(SHURE);
+	});
+
+	it("reports no change when an empty selection is re-synced", () => {
+		expect(resolveMicrophoneSelection({}, undefined)).toBeNull();
 	});
 });

@@ -189,6 +189,32 @@ export function normalizeBrowserMicrophoneProfile(value?: string | null): Browse
 		: DEFAULT_BROWSER_MICROPHONE_PROFILE;
 }
 
+export interface MicrophoneSelection {
+	deviceId?: string;
+	label?: string;
+}
+
+/**
+ * Merge a microphone selection change into the current one. Returns null when
+ * nothing moved, so the caller can skip the state update and the disk write.
+ *
+ * The label matters: the native recorder can only find a device by name, and
+ * some callers only mirror the id. Omitting the label therefore means "keep
+ * what we have" for the same device — but never across devices, where a
+ * carried-over label would name the wrong microphone.
+ */
+export function resolveMicrophoneSelection(
+	previous: MicrophoneSelection,
+	deviceId: string | undefined,
+	deviceLabel?: string,
+): MicrophoneSelection | null {
+	const label = deviceLabel ?? (deviceId === previous.deviceId ? previous.label : undefined);
+	if (deviceId === previous.deviceId && label === previous.label) {
+		return null;
+	}
+	return { deviceId, label };
+}
+
 export function resolveBrowserCaptureCursorPolicy({
 	nativeWindowsCaptureStartFailed = false,
 }: {
@@ -329,6 +355,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	// Kept alongside the id because the native recorder can only find a device by
 	// name, and enumerateDevices() returns blank labels without mic permission.
 	const [microphoneLabel, setMicrophoneLabel] = useState<string | undefined>(undefined);
+	// Mirrors the pair above so persistMicrophoneDeviceId can read the current
+	// selection synchronously, without re-creating itself on every change.
+	const microphoneSelectionRef = useRef<{ deviceId?: string; label?: string }>({});
 	const [systemAudioEnabled, setSystemAudioEnabled] = useState(false);
 	const [webcamEnabled, setWebcamEnabled] = useState(false);
 	const [webcamDeviceId, setWebcamDeviceId] = useState<string | undefined>(undefined);
@@ -1323,6 +1352,12 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				if (result.microphoneLabel) {
 					setMicrophoneLabel(result.microphoneLabel);
 				}
+				// Seed the ref too, or the first id-only sync after load sees no
+				// prior selection and discards the label we just restored.
+				microphoneSelectionRef.current = {
+					deviceId: result.microphoneDeviceId,
+					label: result.microphoneLabel,
+				};
 				setSystemAudioEnabled(result.systemAudioEnabled);
 			}
 		})();
@@ -1335,11 +1370,21 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 	const persistMicrophoneDeviceId = useCallback(
 		(deviceId: string | undefined, deviceLabel?: string) => {
-			setMicrophoneDeviceId(deviceId);
-			setMicrophoneLabel(deviceLabel);
+			const next = resolveMicrophoneSelection(
+				microphoneSelectionRef.current,
+				deviceId,
+				deviceLabel,
+			);
+			if (!next) {
+				return;
+			}
+
+			microphoneSelectionRef.current = next;
+			setMicrophoneDeviceId(next.deviceId);
+			setMicrophoneLabel(next.label);
 			void window.electronAPI.setRecordingPreferences({
-				microphoneDeviceId: deviceId,
-				microphoneLabel: deviceLabel,
+				microphoneDeviceId: next.deviceId,
+				microphoneLabel: next.label,
 			});
 		},
 		[],
