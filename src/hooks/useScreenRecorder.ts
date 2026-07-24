@@ -141,7 +141,7 @@ type UseScreenRecorderReturn = {
 	microphoneEnabled: boolean;
 	setMicrophoneEnabled: (enabled: boolean) => void;
 	microphoneDeviceId: string | undefined;
-	setMicrophoneDeviceId: (deviceId: string | undefined) => void;
+	setMicrophoneDeviceId: (deviceId: string | undefined, deviceLabel?: string) => void;
 	systemAudioEnabled: boolean;
 	setSystemAudioEnabled: (enabled: boolean) => void;
 	webcamEnabled: boolean;
@@ -326,6 +326,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const [isMacOS, setIsMacOS] = useState(false);
 	const [microphoneEnabled, setMicrophoneEnabled] = useState(false);
 	const [microphoneDeviceId, setMicrophoneDeviceId] = useState<string | undefined>(undefined);
+	// Kept alongside the id because the native recorder can only find a device by
+	// name, and enumerateDevices() returns blank labels without mic permission.
+	const [microphoneLabel, setMicrophoneLabel] = useState<string | undefined>(undefined);
 	const [systemAudioEnabled, setSystemAudioEnabled] = useState(false);
 	const [webcamEnabled, setWebcamEnabled] = useState(false);
 	const [webcamDeviceId, setWebcamDeviceId] = useState<string | undefined>(undefined);
@@ -1317,6 +1320,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				if (result.microphoneDeviceId) {
 					setMicrophoneDeviceId(result.microphoneDeviceId);
 				}
+				if (result.microphoneLabel) {
+					setMicrophoneLabel(result.microphoneLabel);
+				}
 				setSystemAudioEnabled(result.systemAudioEnabled);
 			}
 		})();
@@ -1327,10 +1333,17 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		void window.electronAPI.setRecordingPreferences({ microphoneEnabled: enabled });
 	}, []);
 
-	const persistMicrophoneDeviceId = useCallback((deviceId: string | undefined) => {
-		setMicrophoneDeviceId(deviceId);
-		void window.electronAPI.setRecordingPreferences({ microphoneDeviceId: deviceId });
-	}, []);
+	const persistMicrophoneDeviceId = useCallback(
+		(deviceId: string | undefined, deviceLabel?: string) => {
+			setMicrophoneDeviceId(deviceId);
+			setMicrophoneLabel(deviceLabel);
+			void window.electronAPI.setRecordingPreferences({
+				microphoneDeviceId: deviceId,
+				microphoneLabel: deviceLabel,
+			});
+		},
+		[],
+	);
 
 	const persistSystemAudioEnabled = useCallback((enabled: boolean) => {
 		setSystemAudioEnabled(enabled);
@@ -1500,8 +1513,12 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						);
 						micLabel = mic?.label || undefined;
 					} catch {
-						// Fall through — native process will use the default mic
+						// Fall through to the saved label below.
 					}
+					// enumerateDevices() yields blank labels unless this context has
+					// been granted mic access. Without a name the native recorder
+					// silently records from the system default instead.
+					micLabel = micLabel ?? microphoneLabel;
 				}
 
 				const nativeResult = await window.electronAPI.startNativeScreenRecording(

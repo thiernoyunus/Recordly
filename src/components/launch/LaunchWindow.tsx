@@ -252,10 +252,13 @@ function LaunchWindowContent() {
 				devices={devices}
 				microphoneDeviceId={microphoneDeviceId}
 				selectedDeviceId={selectedDeviceId}
-				onSelectDevice={(deviceId) => {
+				onSelectDevice={(deviceId, deviceLabel) => {
 					setMicrophoneEnabled(true);
 					setSelectedDeviceId(deviceId);
-					setMicrophoneDeviceId(deviceId === "default" ? undefined : deviceId);
+					setMicrophoneDeviceId(
+						deviceId === "default" ? undefined : deviceId,
+						deviceId === "default" ? undefined : deviceLabel,
+					);
 				}}
 				trigger={
 					<Button
