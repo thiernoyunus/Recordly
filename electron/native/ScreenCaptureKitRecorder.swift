@@ -543,6 +543,19 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate, A
 		]
 	}
 
+	// Browser device labels can carry a trailing USB id like " (14ed:1012)" that
+	// the CoreAudio name does not, so compare on a normalized form too.
+	private static func normalizedDeviceName(_ value: String) -> String {
+		return value
+			.replacingOccurrences(
+				of: #"\s*\([0-9a-fA-F]{4}:[0-9a-fA-F]{4}\)\s*$"#,
+				with: "",
+				options: .regularExpression
+			)
+			.trimmingCharacters(in: .whitespacesAndNewlines)
+			.lowercased()
+	}
+
 	private static func resolveMicrophoneCaptureDevice(config: CaptureConfig) -> AVCaptureDevice? {
 		let discoverySession = AVCaptureDevice.DiscoverySession(
 			deviceTypes: [.builtInMicrophone, .externalUnknown],
@@ -551,25 +564,51 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate, A
 		)
 		let audioDevices = discoverySession.devices
 
-		if let microphoneLabel = config.microphoneLabel?.trimmingCharacters(in: .whitespacesAndNewlines), !microphoneLabel.isEmpty {
-			if let matchedDevice = audioDevices.first(where: { $0.localizedName == microphoneLabel }) {
+		let requestedId = config.microphoneDeviceId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+		let requestedName = config.microphoneLabel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+		// Note: a browser-issued deviceId never matches a CoreAudio uniqueID, so
+		// this only hits when the caller passes a real device id.
+		if !requestedId.isEmpty, let matchedDevice = audioDevices.first(where: { $0.uniqueID == requestedId }) {
+			return matchedDevice
+		}
+
+		if !requestedName.isEmpty {
+			if let matchedDevice = audioDevices.first(where: { $0.localizedName == requestedName }) {
+				return matchedDevice
+			}
+			let target = normalizedDeviceName(requestedName)
+			if let matchedDevice = audioDevices.first(where: { normalizedDeviceName($0.localizedName) == target }) {
 				return matchedDevice
 			}
 		}
 
-		if let microphoneDeviceId = config.microphoneDeviceId?.trimmingCharacters(in: .whitespacesAndNewlines), !microphoneDeviceId.isEmpty {
-			if let matchedDevice = audioDevices.first(where: { $0.uniqueID == microphoneDeviceId }) {
-				return matchedDevice
-			}
+		let fallback = AVCaptureDevice.default(for: .audio)
+
+		// Recording from a different mic than the user picked is never what they
+		// meant. It stays non-fatal, but it must not be silent: when the system
+		// default happens to be the requested device the bug is invisible.
+		if !requestedId.isEmpty || !requestedName.isEmpty {
+			let available = audioDevices.map { $0.localizedName }.joined(separator: ", ")
+			fputs(
+				"Warning: requested microphone not found (name: \"\(requestedName)\", id: \"\(requestedId)\"). "
+					+ "Falling back to system default: \"\(fallback?.localizedName ?? "none")\". "
+					+ "Available: [\(available)]\n",
+				stderr
+			)
+			fflush(stderr)
 		}
 
-		return AVCaptureDevice.default(for: .audio)
+		return fallback
 	}
 
 	private func buildMicrophoneCaptureSession(config: CaptureConfig) throws -> AVCaptureSession {
 		guard let device = Self.resolveMicrophoneCaptureDevice(config: config) else {
 			throw NSError(domain: "RecordlyCapture", code: 17, userInfo: [NSLocalizedDescriptionKey: "No microphone device available"])
 		}
+
+		fputs("Info: capturing microphone from \"\(device.localizedName)\" (\(device.uniqueID))\n", stderr)
+		fflush(stderr)
 
 		let session = AVCaptureSession()
 		session.beginConfiguration()

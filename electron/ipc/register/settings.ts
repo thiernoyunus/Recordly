@@ -153,6 +153,8 @@ export function registerSettingsHandlers() {
 					typeof parsed.microphoneDeviceId === "string"
 						? parsed.microphoneDeviceId
 						: undefined,
+				microphoneLabel:
+					typeof parsed.microphoneLabel === "string" ? parsed.microphoneLabel : undefined,
 				systemAudioEnabled: parsed.systemAudioEnabled === true,
 			};
 		} catch {
@@ -160,6 +162,7 @@ export function registerSettingsHandlers() {
 				success: true,
 				microphoneEnabled: false,
 				microphoneDeviceId: undefined,
+				microphoneLabel: undefined,
 				systemAudioEnabled: false,
 			};
 		}
@@ -176,6 +179,7 @@ export function registerSettingsHandlers() {
 			prefs: {
 				microphoneEnabled?: boolean;
 				microphoneDeviceId?: string;
+				microphoneLabel?: string;
 				systemAudioEnabled?: boolean;
 			},
 		) => {

@@ -7,6 +7,10 @@ export const MEDIA_CONTENT_TYPES: Record<string, string> = {
 	".mkv": "video/x-matroska",
 	".avi": "video/x-msvideo",
 	".wav": "audio/wav",
+	// The mac recorder writes its mic/system sidecars as .m4a. Leaving it out
+	// made the media server refuse to serve them, so preview had no audio at
+	// all while export — which reads the files straight off disk — was fine.
+	".m4a": "audio/mp4",
 	".mp3": "audio/mpeg",
 	".ogg": "audio/ogg",
 	".png": "image/png",

@@ -486,7 +486,15 @@ export function useAudioPreviewSync({
 							}
 							return;
 						}
-						audio.play().catch(() => undefined);
+						// Swallowing this hid a real fault: the media server refused
+						// to serve .m4a sidecars, so preview was silent with no
+						// symptom anywhere. Report it instead.
+						audio.play().catch((error) => {
+							console.warn(
+								`[source-audio] preview playback failed for ${audio.dataset.sourceAudioPath}`,
+								error,
+							);
+						});
 					});
 				}
 			} else if (!audio.paused) {
