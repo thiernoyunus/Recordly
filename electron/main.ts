@@ -58,12 +58,7 @@ const electronMainDir = path.dirname(fileURLToPath(import.meta.url));
 const IS_SMOKE_EXPORT = process.env.RECORDLY_SMOKE_EXPORT === "1";
 
 function ignoreBrokenConsolePipe(stream: NodeJS.WritableStream | undefined) {
-	stream?.on("error", (error: NodeJS.ErrnoException) => {
-		if (error.code === "EPIPE") {
-			return;
-		}
-		throw error;
-	});
+	stream?.on("error", () => undefined);
 }
 
 ignoreBrokenConsolePipe(process.stdout);
