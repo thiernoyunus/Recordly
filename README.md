@@ -411,21 +411,6 @@ We forked Recordly from [webadderallorg/Recordly](https://github.com/webadderall
 | **Mic & system volume controls** | Separate volume sliders for microphone and system audio during editing |
 | **CapCut-style timeline** | Polished timeline with resize handles, zoom-out support, and smoother editing flow |
 
-### Bug Fixes
-
-| Fix | What was wrong |
-|---|---|
-| **macOS recording permissions** | Screen, mic, and accessibility permissions are now registered before the Settings window opens, so macOS doesn't block recording |
-| **Lightning export EPIPE crash** | Export no longer crashes when the Lightning Breeze encoder hits a broken pipe; falls back to Annex B + WebCodecs retry |
-| **B-roll coverage** | B-roll now fills the correct region (screen vs. camera) in vertical layouts instead of leaving gaps |
-| **System mute during preview** | Muting system audio now actually silences audio baked into the video during preview |
-| **Mic audio in exports** | Microphone audio is included in exports on macOS even when system audio is also captured |
-| **Selected mic honored** | Recording uses the microphone you picked in settings, not whichever one macOS defaults to |
-| **Mac .m4a preview** | The editor can now preview .m4a audio sidecar files that macOS recordings produce |
-| **EIO console crash (macOS)** | A failed log write (EIO error) no longer crashes the desktop app |
-
----
-
 # Credits
 
 ## Acknowledgements
