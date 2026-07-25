@@ -396,6 +396,36 @@ Recordly is licensed under the **AGPL 3.0**.
 
 ---
 
+## Our Changes (Since Fork)
+
+We forked Recordly from [webadderallorg/Recordly](https://github.com/webadderallorg/Recordly) and have been adding features and fixing bugs for our own use. Here's what's different:
+
+### New Features
+
+| Change | What it does |
+|---|---|
+| **Vertical layout system** | Split, camera, and screen presets with per-segment control for vertical (9:16) recordings |
+| **Draggable webcam bubble** | Drag the webcam overlay to reposition it freely on the preview canvas |
+| **One-click round webcam** | Toggle the webcam between rectangle and true-circle shape, stays round under any crop |
+| **B-roll for vertical reels** | Insert B-roll clips that cover the screen or camera region correctly in vertical layouts |
+| **Mic & system volume controls** | Separate volume sliders for microphone and system audio during editing |
+| **CapCut-style timeline** | Polished timeline with resize handles, zoom-out support, and smoother editing flow |
+
+### Bug Fixes
+
+| Fix | What was wrong |
+|---|---|
+| **macOS recording permissions** | Screen, mic, and accessibility permissions are now registered before the Settings window opens, so macOS doesn't block recording |
+| **Lightning export EPIPE crash** | Export no longer crashes when the Lightning Breeze encoder hits a broken pipe; falls back to Annex B + WebCodecs retry |
+| **B-roll coverage** | B-roll now fills the correct region (screen vs. camera) in vertical layouts instead of leaving gaps |
+| **System mute during preview** | Muting system audio now actually silences audio baked into the video during preview |
+| **Mic audio in exports** | Microphone audio is included in exports on macOS even when system audio is also captured |
+| **Selected mic honored** | Recording uses the microphone you picked in settings, not whichever one macOS defaults to |
+| **Mac .m4a preview** | The editor can now preview .m4a audio sidecar files that macOS recordings produce |
+| **EIO console crash (macOS)** | A failed log write (EIO error) no longer crashes the desktop app |
+
+---
+
 # Credits
 
 ## Acknowledgements
