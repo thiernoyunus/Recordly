@@ -10,7 +10,7 @@ import {
 } from "@/lib/mediaTiming";
 import type { AudioRegion, SpeedRegion } from "../types";
 
-const SOURCE_AUDIO_PREVIEW_PLAYING_SEEK_DRIFT_SECONDS = 0.18;
+const SOURCE_AUDIO_PREVIEW_PLAYING_SEEK_DRIFT_SECONDS = 0.05;
 const SOURCE_AUDIO_PREVIEW_PAUSED_SEEK_DRIFT_SECONDS = 0.01;
 
 interface UseAudioPreviewSyncParams {

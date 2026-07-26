@@ -1,13 +1,10 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
-import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
-import { promisify } from "node:util";
 import { BrowserWindow } from "electron";
 import {
 	persistPendingCursorTelemetry,
 	snapshotCursorTelemetryForPersistence,
 } from "../cursor/telemetry";
-import { getFfmpegBinaryPath } from "../ffmpeg/binary";
 import {
 	lastNativeCaptureDiagnostics,
 	nativeCaptureMicrophonePath,
@@ -27,7 +24,6 @@ import {
 	setNativeScreenRecordingActive,
 } from "../state";
 import { isAutoRecordingPath, moveFileWithOverwrite } from "../utils";
-import { computeMacNativeMicBoostDb, parseMaxVolumeDb } from "./audioFilters";
 import {
 	getFileSizeIfPresent,
 	recordNativeCaptureDiagnostics,
@@ -146,65 +142,10 @@ export async function muxNativeMacRecordingWithAudio(
 				if (microphonePath !== finalMicPath) {
 					await moveFileWithOverwrite(microphonePath, finalMicPath);
 				}
-				await boostQuietMacMicSidecar(finalMicPath);
 			}
 		} catch (err) {
 			console.error(`[mac-mux] Failed to handle mic audio:`, err);
 		}
-	}
-}
-
-const execFileAsync = promisify(execFile);
-const MIC_BOOST_FFMPEG_TIMEOUT_MS = 120000;
-const MIC_BOOST_FFMPEG_MAX_BUFFER = 10 * 1024 * 1024;
-
-/**
- * Native macOS mic sidecars come out heavily attenuated when Apple's voice
- * processing is engaged during capture. Measure the file's peak and, only if
- * it is clearly too quiet, rewrite it with a plain makeup gain plus a limiter.
- * Any failure leaves the original file untouched.
- */
-export async function boostQuietMacMicSidecar(micPath: string) {
-	const tempPath = `${micPath}.boost.tmp.m4a`;
-	try {
-		const ffmpegPath = getFfmpegBinaryPath();
-		const analysis = await execFileAsync(
-			ffmpegPath,
-			["-hide_banner", "-nostdin", "-i", micPath, "-af", "volumedetect", "-f", "null", "-"],
-			{ timeout: MIC_BOOST_FFMPEG_TIMEOUT_MS, maxBuffer: MIC_BOOST_FFMPEG_MAX_BUFFER },
-		);
-		const maxVolumeDb = parseMaxVolumeDb(`${analysis.stderr ?? ""}${analysis.stdout ?? ""}`);
-		const boostDb = computeMacNativeMicBoostDb(maxVolumeDb);
-		if (boostDb <= 0) {
-			return;
-		}
-
-		await execFileAsync(
-			ffmpegPath,
-			[
-				"-y",
-				"-hide_banner",
-				"-nostdin",
-				"-nostats",
-				"-i",
-				micPath,
-				"-af",
-				`volume=${boostDb.toFixed(1)}dB,alimiter=limit=0.92:level=0`,
-				"-c:a",
-				"aac",
-				"-b:a",
-				"128k",
-				tempPath,
-			],
-			{ timeout: MIC_BOOST_FFMPEG_TIMEOUT_MS, maxBuffer: MIC_BOOST_FFMPEG_MAX_BUFFER },
-		);
-		await moveFileWithOverwrite(tempPath, micPath);
-		console.log(
-			`[mac-mux] Boosted quiet mic sidecar by ${boostDb.toFixed(1)} dB (peak was ${maxVolumeDb} dB)`,
-		);
-	} catch (error) {
-		await fs.rm(tempPath, { force: true }).catch(() => undefined);
-		console.warn("[mac-mux] Mic sidecar loudness boost skipped:", error);
 	}
 }
 
