@@ -176,9 +176,12 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate, A
 		assetWriter.add(videoInput)
 		self.videoInput = videoInput
 
-		// Add inline audio track directly to the video so the .mp4 always contains audio.
-		// This eliminates the dependency on the post-recording ffmpeg mux step.
-		if capturesSystemAudio || capturesMicrophone {
+		// Add an inline audio track so a mic-only capture still lands sound in
+		// the .mp4 without a post-recording mux step. When system audio is
+		// captured it already goes to its own file, and writing every sample a
+		// second time only creates a copy that drops samples under writer
+		// pressure — which makes the inline audio drift ahead of the picture.
+		if capturesMicrophone && !capturesSystemAudio {
 			let inlineAudio = AVAssetWriterInput(mediaType: .audio, outputSettings: Self.audioOutputSettings(bitRate: 192_000))
 			inlineAudio.expectsMediaDataInRealTime = true
 			if assetWriter.canAdd(inlineAudio) {
@@ -325,10 +328,6 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate, A
 		if outputType == .audio {
 			guard let systemAudioInput else { return }
 			appendAudioSampleBuffer(sampleBuffer, to: systemAudioInput, firstSampleTime: &firstSystemAudioSampleTime, presentationTime: presentationTime)
-			// Also write system audio to the inline video track
-			if let inlineAudioInput, inlineAudioInput.isReadyForMoreMediaData {
-				appendAudioSampleBuffer(sampleBuffer, to: inlineAudioInput, firstSampleTime: &firstInlineAudioSampleTime, presentationTime: presentationTime)
-			}
 			return
 		}
 
@@ -852,4 +851,3 @@ DispatchQueue.global(qos: .utility).async {
 }
 
 service.waitUntilFinished()
-

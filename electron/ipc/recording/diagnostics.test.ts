@@ -134,7 +134,7 @@ describe("getCompanionAudioFallbackPaths", () => {
 		]);
 	});
 
-	it("keeps the mac mic sidecar when the video already embeds system audio", async () => {
+	it("prefers both mac sidecars over the video's embedded system audio", async () => {
 		const videoPath = path.join(tempRoot, "recording.mp4");
 		const systemPath = path.join(tempRoot, "recording.system.m4a");
 		const micPath = path.join(tempRoot, "recording.mic.m4a");
@@ -162,12 +162,11 @@ describe("getCompanionAudioFallbackPaths", () => {
 
 		const { getCompanionAudioFallbackPaths } = await import("./diagnostics");
 
-		// The mp4 carries system audio only (the recorder skips the inline mic
-		// write when it captures system audio), so the mic sidecar must ride
-		// along or the voice track is lost. The system sidecar is skipped to
-		// avoid doubling the system audio.
+		// The inline copy drops samples under writer pressure, which makes
+		// system audio drift ahead of the picture. The sidecars are the intact
+		// copies, so both ride along and the embedded stream gets muted.
 		await expect(getCompanionAudioFallbackPaths(videoPath)).resolves.toEqual([
-			videoPath,
+			systemPath,
 			micPath,
 		]);
 	});
