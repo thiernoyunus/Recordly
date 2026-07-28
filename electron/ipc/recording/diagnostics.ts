@@ -524,23 +524,23 @@ export async function getCompanionAudioFallbackInfo(videoPath: string) {
 		if (!hasUsableMacSystemCompanion && usableMacMicOnlyCompanions.length > 0) {
 			paths = usableMacMicOnlyCompanions;
 		} else if (hasUsableMacSystemCompanion) {
-			// Video has system audio embedded. The "keep tracks separate"
-			// optimization stores the mic as a separate sidecar — include it
-			// so mic audio is not silently dropped from export.
-			const macMicCompanionPaths = Array.from(
+			// The recorder writes every system sample twice: once to the
+			// sidecar, once inline. When a writer is briefly busy the sample is
+			// dropped, and the inline copy loses the most — the remaining audio
+			// slides earlier, so system sound runs progressively ahead of the
+			// picture. Prefer the sidecars and let the routing policy mute the
+			// embedded copy.
+			const macCompanionPaths = Array.from(
 				new Set(
-					companionCandidates.flatMap((candidate) =>
-						candidate.platform === "mac" &&
-						candidate.usablePaths.includes(candidate.micPath)
-							? [candidate.micPath]
-							: [],
-					),
+					companionCandidates.flatMap((candidate) => {
+						if (candidate.platform !== "mac") return [];
+						return [candidate.systemPath, candidate.micPath].filter((companionPath) =>
+							candidate.usablePaths.includes(companionPath),
+						);
+					}),
 				),
 			);
-			paths =
-				macMicCompanionPaths.length > 0
-					? [videoPath, ...macMicCompanionPaths]
-					: [videoPath];
+			paths = macCompanionPaths.length > 0 ? macCompanionPaths : [videoPath];
 		} else {
 			const companionPaths = Array.from(
 				new Set(
