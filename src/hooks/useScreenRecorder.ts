@@ -767,6 +767,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					.split(/[\\/]/)
 					.pop()
 					?.replace(/\.[^.]+$/, "") || `recording-${Date.now()}`;
+			const saveErrorToastId = `recording-project-save-${projectName}`;
+			const saveErrorMessage = previous.projectId
+				? "The recording is in Projects, but its webcam video couldn't be added."
+				: "The recording was saved, but it couldn't be added to Projects. Open it from the recording path.";
 
 			try {
 				const result = await window.electronAPI.saveProjectFileNamed(
@@ -783,20 +787,23 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					},
 					projectName,
 					undefined,
-					previous.projectId ? "rename" : "copy",
+					previous.projectId ? "update" : "copy",
 				);
 
 				if (!result.success || !result.path) {
 					console.warn("Failed to add completed recording to projects:", result.message);
+					toast.error(saveErrorMessage, { id: saveErrorToastId });
 					return;
 				}
 
+				toast.dismiss(saveErrorToastId);
 				savedRecordingProjectRef.current = {
 					videoPath,
 					projectId: result.projectId ?? previous.projectId,
 				};
 			} catch (error) {
 				console.warn("Failed to add completed recording to projects:", error);
+				toast.error(saveErrorMessage, { id: saveErrorToastId });
 			}
 		},
 		[],

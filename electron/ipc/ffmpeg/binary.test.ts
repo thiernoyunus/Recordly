@@ -18,10 +18,12 @@ vi.mock("electron", () => ({ app: { isPackaged: false } }));
 
 describe.skipIf(process.platform !== "darwin")("FFmpeg binary architecture selection", () => {
 	let hostArchitecture: "arm64" | "x64";
+	let failingBinaryPaths: Set<string>;
 
 	beforeEach(() => {
 		vi.resetModules();
 		hostArchitecture = "arm64";
+		failingBinaryPaths = new Set();
 		existsSyncMock.mockReset();
 		existsSyncMock.mockReturnValue(true);
 		spawnSyncMock.mockReset();
@@ -39,9 +41,17 @@ describe.skipIf(process.platform !== "darwin")("FFmpeg binary architecture selec
 				};
 			}
 			if (command === "which") {
-				return { status: 0, stdout: `/usr/local/bin/${args[0]}\n` };
+				const binaryName = args.at(-1) ?? "ffmpeg";
+				const brokenCandidate = `/opt/homebrew/bin/${binaryName}-broken`;
+				const candidates = failingBinaryPaths.has(brokenCandidate)
+					? [brokenCandidate, `/opt/homebrew/bin/${binaryName}`]
+					: [`/usr/local/bin/${binaryName}`, `/opt/homebrew/bin/${binaryName}`];
+				return { status: 0, stdout: `${candidates.join("\n")}\n` };
 			}
 			if (args[0] === "-version") {
+				if (failingBinaryPaths.has(command)) {
+					return { status: 1, stdout: "" };
+				}
 				return { status: 0, stdout: "FFmpeg version" };
 			}
 			return { status: 1, stdout: "" };
@@ -70,11 +80,32 @@ describe.skipIf(process.platform !== "darwin")("FFmpeg binary architecture selec
 
 		expect(getFfmpegBinaryPath()).toBe("/opt/homebrew/bin/ffmpeg");
 		expect(getFfprobeBinaryPath()).toBe("/opt/homebrew/bin/ffprobe");
+		expect(spawnSyncMock).toHaveBeenCalledWith("which", ["-a", "ffmpeg"], expect.any(Object));
+		expect(spawnSyncMock).toHaveBeenCalledWith("which", ["-a", "ffprobe"], expect.any(Object));
 		expect(
 			spawnSyncMock.mock.calls
 				.filter(([, args]) => args[0] === "-version")
 				.map(([binaryPath]) => binaryPath),
 		).not.toEqual(expect.arrayContaining(bundledBinaries));
+	});
+
+	it("continues to later PATH candidates when an earlier binary cannot run", async () => {
+		failingBinaryPaths.add("/opt/homebrew/bin/ffmpeg-broken");
+		failingBinaryPaths.add("/opt/homebrew/bin/ffprobe-broken");
+		const { getFfmpegBinaryPath, getFfprobeBinaryPath } = await import("./binary");
+
+		expect(getFfmpegBinaryPath()).toBe("/opt/homebrew/bin/ffmpeg");
+		expect(getFfprobeBinaryPath()).toBe("/opt/homebrew/bin/ffprobe");
+		expect(spawnSyncMock).toHaveBeenCalledWith(
+			"/opt/homebrew/bin/ffmpeg-broken",
+			["-version"],
+			expect.any(Object),
+		);
+		expect(spawnSyncMock).toHaveBeenCalledWith(
+			"/opt/homebrew/bin/ffprobe-broken",
+			["-version"],
+			expect.any(Object),
+		);
 	});
 });
 

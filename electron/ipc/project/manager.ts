@@ -403,6 +403,96 @@ export async function listProjectLibraryEntries() {
 	};
 }
 
+export async function updateRecordingProjectWebcam(
+	projectId: string,
+	videoPath: string,
+	webcamPath: string | null,
+) {
+	const { projectsDir, entries } = await listProjectLibraryEntries();
+	const canonicalProjectsDir = await fs.realpath(projectsDir);
+
+	for (const entry of entries) {
+		if (!entry.isInProjectsDirectory) {
+			continue;
+		}
+
+		const canonicalProjectPath = await fs.realpath(entry.path).catch(() => null);
+		if (
+			!canonicalProjectPath ||
+			!isPathInsideDirectory(canonicalProjectPath, canonicalProjectsDir)
+		) {
+			continue;
+		}
+
+		let projectData: unknown;
+		try {
+			projectData = parseJsonWithByteOrderMark(
+				await fs.readFile(canonicalProjectPath, "utf-8"),
+			);
+		} catch {
+			continue;
+		}
+
+		if (!projectData || typeof projectData !== "object" || Array.isArray(projectData)) {
+			continue;
+		}
+
+		const projectRecord = projectData as Record<string, unknown>;
+		if (projectRecord.projectId !== projectId) {
+			continue;
+		}
+
+		if (
+			typeof projectRecord.videoPath !== "string" ||
+			normalizePath(projectRecord.videoPath) !== normalizePath(videoPath)
+		) {
+			return { success: false, message: "Recording project did not match its saved video" };
+		}
+
+		const editor =
+			projectRecord.editor &&
+			typeof projectRecord.editor === "object" &&
+			!Array.isArray(projectRecord.editor)
+				? (projectRecord.editor as Record<string, unknown>)
+				: {};
+		const existingWebcam =
+			editor.webcam && typeof editor.webcam === "object" && !Array.isArray(editor.webcam)
+				? (editor.webcam as Record<string, unknown>)
+				: {};
+		const hasSavedWebcamPath = typeof existingWebcam.sourcePath === "string";
+		const updatedWebcam = {
+			...existingWebcam,
+			enabled: webcamPath
+				? hasSavedWebcamPath
+					? existingWebcam.enabled !== false
+					: true
+				: false,
+			sourcePath: webcamPath,
+		};
+
+		await fs.writeFile(
+			canonicalProjectPath,
+			JSON.stringify(
+				{
+					...projectRecord,
+					editor: {
+						...editor,
+						webcam: updatedWebcam,
+					},
+				},
+				null,
+				2,
+			),
+			"utf-8",
+		);
+		await rememberRecentProject(entry.path);
+
+		return { success: true, path: entry.path, projectId };
+	}
+
+	return { success: false, message: "Recording project could not be found" };
+}
+
 function isLoadableProjectData(projectData: unknown) {
 	if (!projectData || typeof projectData !== "object" || Array.isArray(projectData)) {
 		return false;
