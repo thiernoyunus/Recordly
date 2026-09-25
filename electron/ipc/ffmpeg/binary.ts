@@ -1,9 +1,12 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
+import { cpus } from "node:os";
 import { app } from "electron";
 
 const nodeRequire = createRequire(import.meta.url);
+const macBinaryCompatibilityCache = new Map<string, boolean>();
+let macHostArchitecture: "arm64" | "x64" | null | undefined;
 
 export function loadFfmpegStatic(): string | null {
 	try {
@@ -47,6 +50,59 @@ export function loadFfprobeStatic(): string | null {
 	return null;
 }
 
+function getMacHostArchitecture(): "arm64" | "x64" | null {
+	if (macHostArchitecture !== undefined) {
+		return macHostArchitecture;
+	}
+
+	const result = spawnSync("/usr/sbin/sysctl", ["-n", "hw.optional.arm64"], {
+		encoding: "utf-8",
+		windowsHide: true,
+	});
+	const arm64Capability = result.status === 0 ? result.stdout.trim() : "";
+	if (arm64Capability === "1") {
+		macHostArchitecture = "arm64";
+	} else if (arm64Capability === "0") {
+		macHostArchitecture = "x64";
+	} else {
+		macHostArchitecture = /\bApple\b/.test(cpus()[0]?.model ?? "")
+			? "arm64"
+			: process.arch === "x64"
+				? "x64"
+				: null;
+	}
+
+	return macHostArchitecture;
+}
+
+function isMacBinaryCompatible(description: string, hostArchitecture: "arm64" | "x64" | null) {
+	return hostArchitecture === "arm64"
+		? /\barm64\b/.test(description)
+		: hostArchitecture === "x64" && /\bx86_64\b/.test(description);
+}
+
+function isArchitectureCompatible(binaryPath: string): boolean {
+	if (process.platform !== "darwin") {
+		return true;
+	}
+
+	const cached = macBinaryCompatibilityCache.get(binaryPath);
+	if (cached !== undefined) {
+		return cached;
+	}
+
+	const hostArchitecture = getMacHostArchitecture();
+	const result = spawnSync("/usr/bin/file", ["-Lb", binaryPath], {
+		encoding: "utf-8",
+		windowsHide: true,
+		timeout: 5000,
+	});
+	const description = result.status === 0 ? result.stdout : "";
+	const compatible = isMacBinaryCompatible(description, hostArchitecture);
+	macBinaryCompatibilityCache.set(binaryPath, compatible);
+	return compatible;
+}
+
 export function resolveSystemFfmpegBinaryPath(): string | null {
 	const locator = process.platform === "win32" ? "where" : "which";
 	const result = spawnSync(locator, ["ffmpeg"], {
@@ -55,13 +111,15 @@ export function resolveSystemFfmpegBinaryPath(): string | null {
 	});
 
 	if (result.status === 0) {
-		const candidate = result.stdout
+		const candidates = result.stdout
 			.split(/\r?\n/)
 			.map((line: string) => line.trim())
-			.find((line: string) => line.length > 0);
+			.filter((line: string) => line.length > 0);
 
-		if (candidate) {
-			return candidate;
+		for (const candidate of candidates) {
+			if (existsSync(candidate) && isArchitectureCompatible(candidate)) {
+				return candidate;
+			}
 		}
 	}
 
@@ -73,7 +131,7 @@ export function resolveSystemFfmpegBinaryPath(): string | null {
 			"/usr/bin/ffmpeg",
 		];
 		for (const p of commonPaths) {
-			if (existsSync(p)) {
+			if (existsSync(p) && isArchitectureCompatible(p)) {
 				return p;
 			}
 		}
@@ -90,13 +148,15 @@ export function resolveSystemFfprobeBinaryPath(): string | null {
 	});
 
 	if (result.status === 0) {
-		const candidate = result.stdout
+		const candidates = result.stdout
 			.split(/\r?\n/)
 			.map((line: string) => line.trim())
-			.find((line: string) => line.length > 0);
+			.filter((line: string) => line.length > 0);
 
-		if (candidate) {
-			return candidate;
+		for (const candidate of candidates) {
+			if (existsSync(candidate) && isArchitectureCompatible(candidate)) {
+				return candidate;
+			}
 		}
 	}
 
@@ -107,13 +167,30 @@ export function resolveSystemFfprobeBinaryPath(): string | null {
 			"/usr/bin/ffprobe",
 		];
 		for (const p of commonPaths) {
-			if (existsSync(p)) {
+			if (existsSync(p) && isArchitectureCompatible(p)) {
 				return p;
 			}
 		}
 	}
 
 	return null;
+}
+
+function isRunnableBinary(binaryPath: string): boolean {
+	if (!isArchitectureCompatible(binaryPath)) {
+		return false;
+	}
+
+	try {
+		const result = spawnSync(binaryPath, ["-version"], {
+			windowsHide: true,
+			stdio: "ignore",
+			timeout: 5000,
+		});
+		return !result.error && result.status === 0;
+	} catch {
+		return false;
+	}
 }
 
 export function getFfmpegBinaryPath(): string {
@@ -123,13 +200,13 @@ export function getFfmpegBinaryPath(): string {
 			? ffmpegStatic.replace(/\.asar([/\\])/, ".asar.unpacked$1")
 			: ffmpegStatic;
 
-		if (existsSync(bundledPath)) {
+		if (existsSync(bundledPath) && isRunnableBinary(bundledPath)) {
 			return bundledPath;
 		}
 	}
 
 	const systemFfmpeg = resolveSystemFfmpegBinaryPath();
-	if (systemFfmpeg) {
+	if (systemFfmpeg && isRunnableBinary(systemFfmpeg)) {
 		return systemFfmpeg;
 	}
 
@@ -145,13 +222,13 @@ export function getFfprobeBinaryPath(): string {
 			? ffprobeStatic.replace(/\.asar([/\\])/, ".asar.unpacked$1")
 			: ffprobeStatic;
 
-		if (existsSync(bundledPath)) {
+		if (existsSync(bundledPath) && isRunnableBinary(bundledPath)) {
 			return bundledPath;
 		}
 	}
 
 	const systemFfprobe = resolveSystemFfprobeBinaryPath();
-	if (systemFfprobe) {
+	if (systemFfprobe && isRunnableBinary(systemFfprobe)) {
 		return systemFfprobe;
 	}
 

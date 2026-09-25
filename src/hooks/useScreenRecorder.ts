@@ -375,6 +375,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const webcamStartTime = useRef<number | null>(null);
 	const webcamTimeOffsetMs = useRef(0);
 	const recordingSessionTimestamp = useRef<number | null>(null);
+	const savedRecordingProjectRef = useRef<{
+		videoPath: string;
+		projectId: string | null;
+	}>({ videoPath: "", projectId: null });
 	const nativeScreenRecording = useRef(false);
 	const nativeWindowsRecording = useRef(false);
 	const startInFlight = useRef(false);
@@ -752,6 +756,52 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		return source;
 	}, []);
 
+	const saveRecordingProject = useCallback(
+		async (videoPath: string, webcamPath: string | null) => {
+			const previous =
+				savedRecordingProjectRef.current.videoPath === videoPath
+					? savedRecordingProjectRef.current
+					: { videoPath, projectId: null };
+			const projectName =
+				videoPath
+					.split(/[\\/]/)
+					.pop()
+					?.replace(/\.[^.]+$/, "") || `recording-${Date.now()}`;
+
+			try {
+				const result = await window.electronAPI.saveProjectFileNamed(
+					{
+						version: 1,
+						...(previous.projectId ? { projectId: previous.projectId } : {}),
+						videoPath,
+						editor: {
+							webcam: {
+								enabled: Boolean(webcamPath),
+								sourcePath: webcamPath,
+							},
+						},
+					},
+					projectName,
+					undefined,
+					previous.projectId ? "rename" : "copy",
+				);
+
+				if (!result.success || !result.path) {
+					console.warn("Failed to add completed recording to projects:", result.message);
+					return;
+				}
+
+				savedRecordingProjectRef.current = {
+					videoPath,
+					projectId: result.projectId ?? previous.projectId,
+				};
+			} catch (error) {
+				console.warn("Failed to add completed recording to projects:", error);
+			}
+		},
+		[],
+	);
+
 	const finalizeRecordingSession = useCallback(
 		async (videoPath: string, webcamPath: string | null) => {
 			const start = performance.now();
@@ -782,13 +832,15 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				}
 			}
 
+			await saveRecordingProject(videoPath, webcamPath);
+
 			setFinalizing(false);
 			await window.electronAPI.switchToEditor();
 			console.log(
 				`[PERF:RENDERER] Finalize Session & Switch to Editor: COMPLETED in ${(performance.now() - start).toFixed(2)}ms`,
 			);
 		},
-		[],
+		[saveRecordingProject],
 	);
 
 	const closeMicFallbackPauseInterval = useCallback((now = performance.now()) => {
@@ -1247,12 +1299,17 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 						// Update the session state to notify the editor that all background assets (webcam, mic, etc.) are now ready.
 						// This broadcasts a 'recording-session-changed' event that the open editor listens to for re-scanning assets.
-						await window.electronAPI.setCurrentRecordingSession({
-							videoPath: finalPath,
-							webcamPath,
-							timeOffsetMs: webcamTimeOffsetMs.current,
-							hideOverlayCursorByDefault: hideEditorOverlayCursorByDefault.current,
-						});
+						await window.electronAPI.setCurrentRecordingSession(
+							{
+								videoPath: finalPath,
+								webcamPath,
+								timeOffsetMs: webcamTimeOffsetMs.current,
+								hideOverlayCursorByDefault:
+									hideEditorOverlayCursorByDefault.current,
+							},
+							{ preserveProjectPath: true },
+						);
+						await saveRecordingProject(finalPath, webcamPath);
 
 						console.log(
 							`[PERF:RENDERER] Background Stop Sequence: COMPLETED in ${(performance.now() - stopStart).toFixed(2)}ms`,
@@ -1981,14 +2038,18 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 							try {
 								if (webcamPath) {
-									await window.electronAPI.setCurrentRecordingSession({
-										videoPath: finalVideoPath,
-										webcamPath,
-										timeOffsetMs: webcamTimeOffsetMs.current,
-										hideOverlayCursorByDefault:
-											hideEditorOverlayCursorByDefault.current,
-									});
+									await window.electronAPI.setCurrentRecordingSession(
+										{
+											videoPath: finalVideoPath,
+											webcamPath,
+											timeOffsetMs: webcamTimeOffsetMs.current,
+											hideOverlayCursorByDefault:
+												hideEditorOverlayCursorByDefault.current,
+										},
+										{ preserveProjectPath: true },
+									);
 								}
+								await saveRecordingProject(finalVideoPath, webcamPath);
 							} finally {
 								// After all background tasks are done (webcam),
 								// we can safely close the HUD window to release hardware and resources.
