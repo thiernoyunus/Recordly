@@ -18,12 +18,13 @@ import {
 	loadProjectFromPath,
   loadRecentProjectPaths,
 	persistRecordingsDirectorySetting,
+	rememberApprovedLocalReadPath,
 	rememberRecentProject,
 	replaceApprovedSessionLocalReadPaths,
-	rememberApprovedLocalReadPath,
 	resolveApprovedLocalMediaPath,
 	saveProjectThumbnail,
   saveRecentProjectPaths,
+	updateRecordingProjectWebcam,
 } from "../project/manager";
 import { persistRecordingSessionManifest, resolveRecordingSession } from "../project/session";
 import {
@@ -80,10 +81,10 @@ function normalizeProjectSaveName(projectName?: string | null) {
   return sanitizedName || null;
 }
 
-type NamedProjectSaveMode = "rename" | "copy";
+type NamedProjectSaveMode = "rename" | "copy" | "update";
 
 function normalizeNamedProjectSaveMode(value: unknown): NamedProjectSaveMode {
-	return value === "copy" ? "copy" : "rename";
+	return value === "copy" || value === "update" ? value : "rename";
 }
 
 /**
@@ -368,16 +369,32 @@ export function registerProjectHandlers() {
 
     ipcMain.handle('save-project-file-named', async (_, projectData: unknown, projectName: string, thumbnailDataUrl?: string | null, mode?: unknown) => {
       try {
+        const namedSaveMode = normalizeNamedProjectSaveMode(mode)
         const normalizedProjectName = normalizeProjectSaveName(projectName)
-        if (!normalizedProjectName) {
+        if (!normalizedProjectName && namedSaveMode !== "update") {
           return {
             success: false,
             message: 'Project name is required',
           }
         }
 
+        if (namedSaveMode === "update") {
+          const projectId = getProjectId(projectData)
+          const videoPath = getProjectVideoPath(projectData)
+          const webcamPath =
+            projectData && typeof projectData === "object"
+              ? (projectData as { editor?: { webcam?: { sourcePath?: unknown } } }).editor?.webcam
+                  ?.sourcePath
+              : undefined
+
+          if (!projectId || !videoPath || (typeof webcamPath !== "string" && webcamPath !== null)) {
+            return { success: false, message: "Recording project update was incomplete" }
+          }
+
+          return await updateRecordingProjectWebcam(projectId, videoPath, webcamPath)
+        }
+
         const projectsDir = await getProjectsDir()
-        const namedSaveMode = normalizeNamedProjectSaveMode(mode)
         const activeProjectPath = isTrustedProjectPath(currentProjectPath)
           ? currentProjectPath
           : null

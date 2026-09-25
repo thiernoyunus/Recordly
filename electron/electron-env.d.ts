@@ -797,7 +797,7 @@ interface Window {
 			projectData: unknown,
 			projectName: string,
 			thumbnailDataUrl?: string | null,
-			mode?: "rename" | "copy",
+			mode?: "rename" | "copy" | "update",
 		) => Promise<{
 			success: boolean;
 			path?: string;

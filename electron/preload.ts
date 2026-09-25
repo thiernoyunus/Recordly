@@ -802,7 +802,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		projectData: unknown,
 		projectName: string,
 		thumbnailDataUrl?: string | null,
-		mode?: "rename" | "copy",
+		mode?: "rename" | "copy" | "update",
 	) => {
 		return ipcRenderer.invoke(
 			"save-project-file-named",

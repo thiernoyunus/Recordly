@@ -157,6 +157,54 @@ describe("local media path policy", () => {
 		await expect(fs.readFile(thumbnailPath, "utf8")).resolves.toBe("png-thumbnail");
 	});
 
+	it("updates webcam metadata without replacing the project or active file", async () => {
+		const { getProjectsDir, updateRecordingProjectWebcam } = await import("./manager");
+		const state = await import("../state");
+		const projectsDir = await getProjectsDir();
+		const videoPath = path.join(tempPath, "screen.mp4");
+		const webcamPath = path.join(tempPath, "webcam.mp4");
+		const recordingProjectPath = path.join(projectsDir, "recording.recordly");
+		const activeProjectPath = path.join(projectsDir, "active.recordly");
+		const recordingProject = {
+			version: 1,
+			projectId: "recording-project-id",
+			videoPath,
+			customMetadata: "preserve me",
+			editor: {
+				zoomRegions: [{ startMs: 100, endMs: 200 }],
+				webcam: { enabled: false, sourcePath: null, size: 120 },
+			},
+		};
+		const activeProject = {
+			version: 1,
+			projectId: "active-project-id",
+			videoPath: path.join(tempPath, "active.mp4"),
+			editor: {},
+		};
+
+		await fs.mkdir(projectsDir, { recursive: true });
+		await fs.writeFile(recordingProjectPath, JSON.stringify(recordingProject));
+		await fs.writeFile(activeProjectPath, JSON.stringify(activeProject));
+		state.setCurrentProjectPath(activeProjectPath);
+
+		const result = await updateRecordingProjectWebcam(
+			"recording-project-id",
+			videoPath,
+			webcamPath,
+		);
+
+		expect(result).toMatchObject({ success: true, path: recordingProjectPath });
+		expect(JSON.parse(await fs.readFile(recordingProjectPath, "utf-8"))).toEqual({
+			...recordingProject,
+			editor: {
+				...recordingProject.editor,
+				webcam: { enabled: true, sourcePath: webcamPath, size: 120 },
+			},
+		});
+		expect(await fs.readFile(activeProjectPath, "utf-8")).toBe(JSON.stringify(activeProject));
+		expect(state.currentProjectPath).toBe(activeProjectPath);
+	});
+
 	it("loads project files that start with a UTF-8 byte order mark", async () => {
 		const videoPath = path.join(tempPath, "recording.mp4");
 		const projectPath = path.join(tempPath, "recording.recordly");
